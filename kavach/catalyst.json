@@ -1,0 +1,13 @@
+{
+  "client": {
+    "source": "kavach",
+    "plugin": "zcatalyst-cli-plugin-react"
+  },
+  "functions": {
+    "targets": [
+      "api"
+    ],
+    "ignore": [],
+    "source": "functions"
+  }
+}
