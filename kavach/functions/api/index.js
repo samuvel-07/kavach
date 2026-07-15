@@ -31,9 +31,9 @@ const LLM_CONFIG = {
   url: 'https://api.catalyst.zoho.in/quickml/v1/project/53222000000013074/glm/chat',
   model: 'crm-di-glm47b_30b_it',
   org: '60078268134',
-  clientId: process.env.ZOHO_CLIENT_ID || 'PASTE_CLIENT_ID',
-  clientSecret: process.env.ZOHO_CLIENT_SECRET || 'PASTE_CLIENT_SECRET',
-  refreshToken: process.env.ZOHO_REFRESH_TOKEN || 'PASTE_REFRESH_TOKEN'
+  clientId: process.env.ZOHO_CLIENT_ID || '1000.0UDZTKSN00B5LJTYVFG251OZDDCB3H',
+  clientSecret: process.env.ZOHO_CLIENT_SECRET || '1d71ce66815123db01b8664d0dad4732c4f3543880',
+  refreshToken: process.env.ZOHO_REFRESH_TOKEN || '1000.f56b197eedd11f4ac9849085144b39d8.ca4598b6fc85613a6f45c77bd1f58dda'
 };
 
 let _tok = { value: null, exp: 0 };
@@ -75,7 +75,17 @@ async function callLLM(systemPrompt, userPrompt, maxTokens = 800) {
   });
   if (!resp.ok) throw new Error(`LLM HTTP ${resp.status}: ${(await resp.text()).slice(0, 300)}`);
   const data = await resp.json();
-  return data.choices?.[0]?.message?.content ?? '';
+  // GLM response can come in multiple shapes — try each
+  let out = '';
+  if (typeof data.response === 'string') out = data.response.trim();       // GLM direct response
+  if (!out) {
+    const msg = data.choices?.[0]?.message || {};
+    out = (msg.content || '').trim();
+    if (!out && msg.reasoning) out = msg.reasoning;          // GLM thinking-mode fallback
+  }
+  out = out.replace(/<think>[\s\S]*?<\/think>/gi, '').trim(); // strip inline think blocks
+  if (!out) throw new Error('LLM empty response: ' + JSON.stringify(data).slice(0, 400));
+  return out;
 }
 
 // ======================= DATA MODEL CONSTANTS =======================
@@ -134,45 +144,45 @@ function invert(map) {
   return Object.entries(map).map(([id, name]) => `${name}=${id}`).join(', ');
 }
 
-const SQL_SYSTEM_PROMPT = `You translate an investigator's question about the Karnataka Police FIR database into ONE ZCQL query (Zoho Catalyst Query Language, a restricted SQL dialect).
+function buildSqlPrompt(geo) {
+  const districtMap = Object.entries(geo.districtUnits)
+    .map(([d, ids]) => `${d}: PoliceStationID IN (${ids.join(',')})`).join('\n');
+  return `You translate an investigator's question about the Karnataka Police FIR database into ONE ZCQL query (a RESTRICTED SQL dialect).
 
-DATABASE TABLES (only these exist):
-- CaseMaster(CaseMasterID, CrimeNo, CaseNo, CrimeRegisteredDate[DATE], PolicePersonID, PoliceStationID, CaseCategoryID, GravityOffenceID, CrimeMajorHeadID, CrimeMinorHeadID, CaseStatusID, CourtID, IncidentFromDate, IncidentToDate, InfoReceivedPSDate, latitude, longitude, BriefFacts)
+ABSOLUTE RULE: JOINs are NOT SUPPORTED. Query exactly ONE table per query. No subqueries, no UNION.
+
+TABLES (query one at a time):
+- CaseMaster(CaseMasterID, CrimeNo, CaseNo, CrimeRegisteredDate[DATE 'YYYY-MM-DD'], PolicePersonID, PoliceStationID, CaseCategoryID, GravityOffenceID, CrimeMajorHeadID, CrimeMinorHeadID, CaseStatusID, CourtID, IncidentFromDate, IncidentToDate, latitude, longitude, BriefFacts)
 - Accused(AccusedMasterID, CaseMasterID, AccusedName, AgeYear, GenderID, PersonID)
 - Victim(VictimMasterID, CaseMasterID, VictimName, AgeYear, GenderID, VictimPolice)
-- ComplainantDetails(ComplainantID, CaseMasterID, ComplainantName, AgeYear, OccupationID, ReligionID, CasteID, GenderID)
-- ArrestSurrender(ArrestSurrenderID, CaseMasterID, ArrestSurrenderTypeID, ArrestSurrenderDate, ArrestSurrenderStateId, ArrestSurrenderDistrictId, PoliceStationID, IOID, CourtID, AccusedMasterID, IsAccused, IsComplainantAccused)
-- ActSectionAssociation(CaseMasterID, ActID, SectionID, ActOrderID, SectionOrderID)
+- ComplainantDetails(ComplainantID, CaseMasterID, ComplainantName, AgeYear, OccupationID, GenderID)
+- ArrestSurrender(ArrestSurrenderID, CaseMasterID, ArrestSurrenderTypeID, ArrestSurrenderDate, ArrestSurrenderDistrictId, PoliceStationID, IOID, AccusedMasterID)
+- ActSectionAssociation(CaseMasterID, ActID, SectionID)
 - ChargesheetDetails(CSID, CaseMasterID, csdate, cstype, PolicePersonID)
-- Employee(EmployeeID, DistrictID, UnitID, RankID, DesignationID, KGID, FirstName, EmployeeDOB, GenderID, BloodGroupID, PhysicallyChallenged, AppointmentDate)
-- Unit(UnitID, UnitName, TypeID, ParentUnit, StateID, DistrictID, Active)   -- police stations
-- District(DistrictID, DistrictName, StateID, Active)
+- Employee(EmployeeID, DistrictID, UnitID, RankID, DesignationID, FirstName)
 
-ID MAPPINGS (use IDs in WHERE clauses, never join to lookup tables — they don't exist):
-- CrimeMinorHeadID (crime types): ${invert(LOOKUPS.CrimeSubHead)}
-- CrimeMajorHeadID (crime groups): ${invert(LOOKUPS.CrimeHead)}
+ID MAPPINGS for WHERE clauses:
+- CrimeMinorHeadID (crime type): ${invert(LOOKUPS.CrimeSubHead)}
+- CrimeMajorHeadID (crime group): ${invert(LOOKUPS.CrimeHead)}
 - CaseStatusID: ${invert(LOOKUPS.CaseStatus)}
 - CaseCategoryID: ${invert(LOOKUPS.CaseCategory)}
-- GravityOffenceID: ${invert(LOOKUPS.GravityOffence)}
-- ChargesheetDetails.cstype: A=Chargesheet filed, B=False Case, C=Undetected
-- GenderID in Accused/Victim: 'M','F','T'
+- GravityOffenceID: 1=Heinous, 2=Non-Heinous
+- cstype: A=Chargesheet filed, B=False Case, C=Undetected
 
-JOIN PATHS:
-- Case→district: CaseMaster JOIN Unit ON CaseMaster.PoliceStationID = Unit.UnitID JOIN District ON Unit.DistrictID = District.DistrictID
-- Case→accused: JOIN Accused ON Accused.CaseMasterID = CaseMaster.CaseMasterID
-- Repeat offender: GROUP BY Accused.AccusedName HAVING COUNT(Accused.CaseMasterID) > 1
+DISTRICT → POLICE STATION IDs (use these instead of joins; district questions filter CaseMaster.PoliceStationID):
+${districtMap}
 
-ZCQL RULES (strict):
-1. ONE SELECT statement only. No subqueries, no UNION, no window functions, no CTEs.
-2. Allowed: JOIN..ON, LEFT JOIN, WHERE (=, !=, <, >, <=, >=, LIKE, IN, BETWEEN, AND, OR), GROUP BY, HAVING, ORDER BY, LIMIT, COUNT, SUM, AVG, MIN, MAX, DISTINCT.
-3. Dates are literals: CrimeRegisteredDate >= '2025-01-01'. There are NO date functions (no YEAR(), MONTH()) — use date ranges instead.
-4. Always use Table.Column notation everywhere.
-5. Name search: use LIKE with wildcards, e.g. Accused.AccusedName LIKE '%Chandru%'.
-6. Text search in facts: CaseMaster.BriefFacts LIKE '%stolen%'.
-7. If the question implies a list, add LIMIT 100. Aggregations need no LIMIT.
-8. When the user asks about cases/FIRs, SELECT CaseMaster.CaseMasterID, CaseMaster.CrimeNo plus the relevant columns so answers can cite cases.
+RULES:
+1. ONE single-table SELECT. Allowed: WHERE (=,!=,<,>,<=,>=,LIKE,IN,BETWEEN,AND,OR), GROUP BY, HAVING, ORDER BY, LIMIT, COUNT, SUM, AVG, MIN, MAX, DISTINCT.
+2. Dates are literal strings; NO date functions. Year 2025 = BETWEEN '2025-01-01' AND '2025-12-31'.
+3. Name/text search: LIKE '%value%'.
+4. Repeat offenders: SELECT Accused.AccusedName, COUNT(Accused.CaseMasterID) FROM Accused GROUP BY Accused.AccusedName HAVING COUNT(Accused.CaseMasterID) > 1
+5. If the question needs two tables (e.g. details of cases involving a person), use CaseMasterID values already present in CONVERSATION SO FAR, e.g. WHERE CaseMaster.CaseMasterID IN (101,205).
+6. List queries: add LIMIT 100. When listing cases, include CaseMasterID and CrimeNo.
+7. Always use Table.Column notation.
 
-OUTPUT FORMAT: respond with ONLY the ZCQL query. No explanation, no markdown fences, no comments.`;
+OUTPUT: ONLY the ZCQL query. No explanation, no markdown.`;
+}
 
 const ANSWER_SYSTEM_PROMPT = `You are KAVACH, a crime intelligence assistant for Karnataka State Police investigators.
 You are given: the investigator's question, the ZCQL query that was executed, and the resulting rows (JSON).
@@ -192,9 +202,10 @@ function validateSQL(sql) {
   const s = sql.trim().replace(/;+\s*$/, '');
   if (!/^SELECT\b/i.test(s)) throw new Error('Only SELECT queries are permitted');
   if (FORBIDDEN.test(s)) throw new Error('Query contains a forbidden operation');
+  if (/\bJOIN\b/i.test(s)) throw new Error('JOINs are not supported — single-table query required');
   if (s.includes(';')) throw new Error('Multiple statements are not allowed');
-  // whitelist any table mentioned after FROM/JOIN
-  const refs = [...s.matchAll(/\b(?:FROM|JOIN)\s+([A-Za-z_]+)/gi)].map(m => m[1]);
+  // whitelist any table mentioned after FROM
+  const refs = [...s.matchAll(/\bFROM\s+([A-Za-z_]+)/gi)].map(m => m[1]);
   for (const t of refs) {
     if (!TABLES.includes(t)) throw new Error(`Table not allowed: ${t}`);
   }
@@ -278,6 +289,24 @@ async function tableCount(catalystApp, t) {
   return rec ? Number(Object.values(rec)[0]) : 0;
 }
 
+let _geo = null;
+async function getGeo(catalystApp) {
+  if (_geo) return _geo;
+  const dists = await zcql(catalystApp, 'SELECT DistrictID, DistrictName FROM District LIMIT 100');
+  const units = await zcql(catalystApp, 'SELECT UnitID, UnitName, DistrictID FROM Unit LIMIT 300');
+  const dName = {};
+  dists.forEach(r => { dName[r.District.DistrictID] = r.District.DistrictName; });
+  const districtUnits = {}, unitToDistrict = {}, unitNames = {};
+  units.forEach(r => {
+    const u = r.Unit, dn = dName[u.DistrictID] || ('District ' + u.DistrictID);
+    (districtUnits[dn] = districtUnits[dn] || []).push(u.UnitID);
+    unitToDistrict[u.UnitID] = dn;
+    unitNames[u.UnitID] = u.UnitName;
+  });
+  _geo = { districtUnits, unitToDistrict, unitNames };
+  return _geo;
+}
+
 // ======================= THE ENGINE =======================
 
 app.post('/api/ask', async (req, res) => {
@@ -297,7 +326,8 @@ app.post('/api/ask', async (req, res) => {
       `QUESTION: ${question}`;
 
     // 2) LLM -> SQL
-    const rawSQL = await callLLM(SQL_SYSTEM_PROMPT, userPrompt, 400);
+    const geo = await getGeo(catalystApp);
+    const rawSQL = await callLLM(buildSqlPrompt(geo), userPrompt, 400);
     trace.rawSQL = rawSQL;
 
     // 3) Guardrails
@@ -307,6 +337,12 @@ app.post('/api/ask', async (req, res) => {
     // 4) Execute on Data Store
     const rows = flattenRows(await zcql(catalystApp, sql));
     trace.rowCount = rows.length;
+    rows.forEach(r => {
+      if (r.PoliceStationID != null) {
+        r.DistrictName = geo.unitToDistrict[r.PoliceStationID];
+        r.StationName = geo.unitNames[r.PoliceStationID];
+      }
+    });
 
     // 5) LLM -> natural-language answer grounded in rows
     const evidenceSample = rows.slice(0, 30);
