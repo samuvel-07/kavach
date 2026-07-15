@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import './theme.css';
 import Sidebar from './Sidebar';
 import ChatView from './ChatView';
+import NetworkView from './NetworkView';
 
 const API_BASE = process.env.NODE_ENV === 'development'
   ? 'https://kavach-60078268134.development.catalystserverless.in'
@@ -13,7 +14,6 @@ function Toast({ text }) {
 
 function PlaceholderPage({ id }) {
   const meta = {
-    network: { icon: '🕸️', label: 'Criminal Network Analysis' },
     map: { icon: '🗺️', label: 'Crime Hotspot Map' },
     dashboard: { icon: '📊', label: 'Analytics Dashboard' },
     audit: { icon: '📋', label: 'Query Audit Log' },
@@ -141,6 +141,11 @@ export default function App() {
             setLanguage={setLanguage}
             onRetry={handleRetry}
           />
+        ) : page === 'network' ? (
+          <NetworkView onAskCase={(crimeNo) => {
+            setPage('chat');
+            setTimeout(() => doSend(`Give me a summary of case ${crimeNo}`), 100);
+          }} />
         ) : (
           <PlaceholderPage id={page} />
         )}

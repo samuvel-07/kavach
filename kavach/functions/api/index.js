@@ -374,6 +374,88 @@ app.post('/api/ask', async (req, res) => {
   }
 });
 
+// ======================= NETWORK GRAPH =======================
+let _network = { data: null, exp: 0 };
+
+async function pageAll(catalystApp, table, cols) {
+  const out = [];
+  let lastRow = 0;
+  for (let i = 0; i < 40; i++) {
+    const page = await zcql(catalystApp,
+      `SELECT ROWID, ${cols} FROM ${table} WHERE ROWID > ${lastRow} ORDER BY ROWID LIMIT 300`);
+    if (!page || page.length === 0) break;
+    page.forEach(r => out.push(r[table]));
+    lastRow = page[page.length - 1][table].ROWID;
+    if (page.length < 300) break;
+  }
+  return out;
+}
+
+app.get('/api/network', async (req, res) => {
+  const minShared = parseInt(req.query.minShared || '1', 10);
+  const minCases = parseInt(req.query.minCases || '2', 10);
+  try {
+    if (!_network.data || Date.now() > _network.exp) {
+      const catalystApp = catalyst.initialize(req);
+      const accused = await pageAll(catalystApp, 'Accused', 'AccusedName, AgeYear, CaseMasterID');
+      const cases = await pageAll(catalystApp, 'CaseMaster',
+        'CaseMasterID, CrimeNo, GravityOffenceID, CrimeMinorHeadID, DistrictName');
+      const caseInfo = {};
+      cases.forEach(c => { caseInfo[c.CaseMasterID] = c; });
+
+      // group by person (name+age disambiguates common names)
+      const people = {};
+      accused.forEach(a => {
+        const key = `${a.AccusedName}|${a.AgeYear}`;
+        (people[key] = people[key] || { name: a.AccusedName, age: a.AgeYear, cases: new Set() })
+          .cases.add(Number(a.CaseMasterID));
+      });
+
+      // co-occurrence edges via case -> people index
+      const byCase = {};
+      Object.entries(people).forEach(([key, p]) =>
+        p.cases.forEach(cid => (byCase[cid] = byCase[cid] || []).push(key)));
+      const edgeMap = {};
+      Object.entries(byCase).forEach(([cid, keys]) => {
+        for (let i = 0; i < keys.length; i++)
+          for (let j = i + 1; j < keys.length; j++) {
+            const ek = [keys[i], keys[j]].sort().join('~~');
+            (edgeMap[ek] = edgeMap[ek] || { cases: [] }).cases.push(Number(cid));
+          }
+      });
+
+      const nodes = Object.entries(people).map(([key, p]) => {
+        const cs = [...p.cases];
+        const heinous = cs.filter(c => caseInfo[c] && Number(caseInfo[c].GravityOffenceID) === 1).length;
+        return {
+          id: key, name: p.name, age: p.age, caseCount: cs.length,
+          heinousCount: heinous,
+          risk: Math.min(100, cs.length * 12 + heinous * 20),   // explainable score
+          crimeNos: cs.map(c => caseInfo[c] ? caseInfo[c].CrimeNo : c).slice(0, 20),
+          districts: [...new Set(cs.map(c => caseInfo[c] && caseInfo[c].DistrictName).filter(Boolean))]
+        };
+      });
+      const edges = Object.entries(edgeMap).map(([ek, e]) => {
+        const [a, b] = ek.split('~~');
+        return { source: a, target: b, weight: e.cases.length, caseIds: e.cases };
+      });
+      _network = { data: { nodes, edges }, exp: Date.now() + 10 * 60 * 1000 };
+    }
+    const { nodes, edges } = _network.data;
+    const keepEdges = edges.filter(e => e.weight >= minShared);
+    const connected = new Set(keepEdges.flatMap(e => [e.source, e.target]));
+    const keepNodes = nodes.filter(n => n.caseCount >= minCases || connected.has(n.id));
+    const keepIds = new Set(keepNodes.map(n => n.id));
+    res.json({
+      nodes: keepNodes,
+      edges: keepEdges.filter(e => keepIds.has(e.source) && keepIds.has(e.target)),
+      totals: { people: nodes.length, links: edges.length }
+    });
+  } catch (err) {
+    res.status(500).json({ error: String(err && err.message || err) });
+  }
+});
+
 // ======================= v2 ADMIN ROUTES (unchanged) =======================
 
 app.get('/health', (req, res) => res.json({ ok: true, app: 'KAVACH', version: 3, time: new Date().toISOString() }));

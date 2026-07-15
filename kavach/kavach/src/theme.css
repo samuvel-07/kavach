@@ -716,3 +716,223 @@ textarea:focus-visible { outline: none; } /* handled by composer-box:focus-withi
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* ============================================================
+   NETWORK VIEW
+   ============================================================ */
+.net-page {
+  position: relative;
+  overflow: hidden;
+}
+
+.net-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: calc(var(--unit) * 1) calc(var(--unit) * 3);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  gap: calc(var(--unit) * 2);
+  flex-wrap: wrap;
+  min-height: 44px;
+}
+
+.net-ctrl-left {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--unit) * 1.5);
+}
+
+.net-label {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.net-label strong {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.net-slider {
+  width: 100px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.net-search {
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: var(--sans);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  outline: none;
+  width: 180px;
+  transition: border-color 0.15s var(--ease);
+}
+
+.net-search:focus { border-color: var(--accent-border); }
+.net-search::placeholder { color: var(--text-faint); }
+
+.net-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-chip {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #0B1220;
+}
+
+.net-totals {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-left: 8px;
+}
+
+.net-canvas {
+  flex: 1;
+  background: var(--bg);
+  cursor: grab;
+}
+
+.net-canvas:active { cursor: grabbing; }
+
+/* Slide-in panel */
+.net-panel {
+  position: absolute;
+  top: 0; right: 0; bottom: 0;
+  width: 320px;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  z-index: 20;
+  animation: panelIn 0.25s var(--ease);
+  overflow-y: auto;
+}
+
+@keyframes panelIn {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.net-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: calc(var(--unit) * 2) calc(var(--unit) * 2.5);
+  border-bottom: 1px solid var(--border);
+}
+
+.net-panel-head h3 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.net-close {
+  width: 28px; height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.12s var(--ease);
+}
+
+.net-close:hover { background: var(--surface-hover); color: var(--text); }
+
+.net-panel-body {
+  padding: calc(var(--unit) * 2) calc(var(--unit) * 2.5);
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--unit) * 2);
+}
+
+.net-meta {
+  display: flex;
+  gap: calc(var(--unit) * 2);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.net-meta span {
+  padding: 4px 10px;
+  background: var(--surface-raised);
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.net-risk-row {
+  display: flex;
+  align-items: center;
+  gap: var(--unit);
+}
+
+.net-risk-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+}
+
+.net-risk-bar-bg {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-raised);
+  overflow: hidden;
+}
+
+.net-risk-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s var(--ease);
+}
+
+.net-risk-val {
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.net-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.net-section-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.net-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.ev-chip-btn {
+  cursor: pointer;
+  font-family: var(--mono);
+}
+
+.ev-chip-btn:hover {
+  background: var(--accent);
+  color: var(--bg);
+}
