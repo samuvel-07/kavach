@@ -1,14 +1,17 @@
 /**
- * KAVACH — api function (Catalyst Advanced I/O, Express)  v2
+ * KAVACH — api function (Catalyst Advanced I/O, Express)  v3
  * ----------------------------------------------------------
- * Routes:
- *   GET /health                  -> liveness check
- *   GET /admin/load              -> live status dashboard (expected vs actual counts + safe action links)
- *   GET /admin/load/:table       -> loads CSV; REFUSES if table already has rows (no more duplicates)
- *   GET /admin/clear/:table      -> deletes all rows from that table (batched), then reload becomes available
- *   GET /admin/counts            -> raw counts JSON
- *   GET /admin/files             -> lists CSVs actually bundled in the deployment (diagnoses missing files)
- *   GET /api/lookups             -> lookup constants
+ * NEW in v3:
+ *   POST /api/ask   -> the NL→SQL conversational engine
+ *      body: { question: string, history?: [{question, sql}], language?: 'en'|'kn' }
+ *      returns: { answer, sql, rows, rowCount, evidence }
+ *
+ * Everything from v2 (loader dashboard, clear, counts, files) is retained below.
+ *
+ * BEFORE FIRST USE: fill in LLM_CONFIG with your deployed QuickML endpoint
+ * details (LLM Serving -> your GLM 4.7 Flash endpoint -> URL + key).
+ * The callLLM() adapter assumes an OpenAI-style chat API; if your QuickML
+ * sample request looks different, only callLLM() needs adjusting.
  */
 
 'use strict';
@@ -22,6 +25,43 @@ const app = express();
 app.use(express.json());
 
 const ADMIN_KEY = 'kavach2026';
+
+// ======================= LLM CONFIG — FILL THESE =======================
+const LLM_CONFIG = {
+  url: process.env.LLM_URL || 'PASTE_QUICKML_ENDPOINT_URL_HERE',
+  apiKey: process.env.LLM_KEY || 'PASTE_QUICKML_API_KEY_HERE',
+  model: process.env.LLM_MODEL || 'glm-4.7-flash'
+};
+
+/** Adapter for the QuickML LLM endpoint (OpenAI-style chat by default). */
+async function callLLM(systemPrompt, userPrompt, maxTokens = 800) {
+  const resp = await fetch(LLM_CONFIG.url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${LLM_CONFIG.apiKey}`
+    },
+    body: JSON.stringify({
+      model: LLM_CONFIG.model,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      temperature: 0.1,
+      max_tokens: maxTokens
+    })
+  });
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`LLM HTTP ${resp.status}: ${text.slice(0, 300)}`);
+  }
+  const data = await resp.json();
+  // OpenAI-style; adjust here if QuickML's response shape differs
+  return data.choices?.[0]?.message?.content
+      ?? data.output ?? data.answer ?? JSON.stringify(data).slice(0, 500);
+}
+
+// ======================= DATA MODEL CONSTANTS =======================
 
 const EXPECTED = {
   District: 31, Unit: 124, Employee: 1014, CaseMaster: 3000,
@@ -71,7 +111,108 @@ const LOOKUPS = {
   cstype: { A: 'Chargesheet', B: 'False Case', C: 'Undetected' }
 };
 
-// ------------------------------- helpers -------------------------------
+// ======================= NL→SQL PROMPTS =======================
+
+function invert(map) {
+  return Object.entries(map).map(([id, name]) => `${name}=${id}`).join(', ');
+}
+
+const SQL_SYSTEM_PROMPT = `You translate an investigator's question about the Karnataka Police FIR database into ONE ZCQL query (Zoho Catalyst Query Language, a restricted SQL dialect).
+
+DATABASE TABLES (only these exist):
+- CaseMaster(CaseMasterID, CrimeNo, CaseNo, CrimeRegisteredDate[DATE], PolicePersonID, PoliceStationID, CaseCategoryID, GravityOffenceID, CrimeMajorHeadID, CrimeMinorHeadID, CaseStatusID, CourtID, IncidentFromDate, IncidentToDate, InfoReceivedPSDate, latitude, longitude, BriefFacts)
+- Accused(AccusedMasterID, CaseMasterID, AccusedName, AgeYear, GenderID, PersonID)
+- Victim(VictimMasterID, CaseMasterID, VictimName, AgeYear, GenderID, VictimPolice)
+- ComplainantDetails(ComplainantID, CaseMasterID, ComplainantName, AgeYear, OccupationID, ReligionID, CasteID, GenderID)
+- ArrestSurrender(ArrestSurrenderID, CaseMasterID, ArrestSurrenderTypeID, ArrestSurrenderDate, ArrestSurrenderStateId, ArrestSurrenderDistrictId, PoliceStationID, IOID, CourtID, AccusedMasterID, IsAccused, IsComplainantAccused)
+- ActSectionAssociation(CaseMasterID, ActID, SectionID, ActOrderID, SectionOrderID)
+- ChargesheetDetails(CSID, CaseMasterID, csdate, cstype, PolicePersonID)
+- Employee(EmployeeID, DistrictID, UnitID, RankID, DesignationID, KGID, FirstName, EmployeeDOB, GenderID, BloodGroupID, PhysicallyChallenged, AppointmentDate)
+- Unit(UnitID, UnitName, TypeID, ParentUnit, StateID, DistrictID, Active)   -- police stations
+- District(DistrictID, DistrictName, StateID, Active)
+
+ID MAPPINGS (use IDs in WHERE clauses, never join to lookup tables — they don't exist):
+- CrimeMinorHeadID (crime types): ${invert(LOOKUPS.CrimeSubHead)}
+- CrimeMajorHeadID (crime groups): ${invert(LOOKUPS.CrimeHead)}
+- CaseStatusID: ${invert(LOOKUPS.CaseStatus)}
+- CaseCategoryID: ${invert(LOOKUPS.CaseCategory)}
+- GravityOffenceID: ${invert(LOOKUPS.GravityOffence)}
+- ChargesheetDetails.cstype: A=Chargesheet filed, B=False Case, C=Undetected
+- GenderID in Accused/Victim: 'M','F','T'
+
+JOIN PATHS:
+- Case→district: CaseMaster JOIN Unit ON CaseMaster.PoliceStationID = Unit.UnitID JOIN District ON Unit.DistrictID = District.DistrictID
+- Case→accused: JOIN Accused ON Accused.CaseMasterID = CaseMaster.CaseMasterID
+- Repeat offender: GROUP BY Accused.AccusedName HAVING COUNT(Accused.CaseMasterID) > 1
+
+ZCQL RULES (strict):
+1. ONE SELECT statement only. No subqueries, no UNION, no window functions, no CTEs.
+2. Allowed: JOIN..ON, LEFT JOIN, WHERE (=, !=, <, >, <=, >=, LIKE, IN, BETWEEN, AND, OR), GROUP BY, HAVING, ORDER BY, LIMIT, COUNT, SUM, AVG, MIN, MAX, DISTINCT.
+3. Dates are literals: CrimeRegisteredDate >= '2025-01-01'. There are NO date functions (no YEAR(), MONTH()) — use date ranges instead.
+4. Always use Table.Column notation everywhere.
+5. Name search: use LIKE with wildcards, e.g. Accused.AccusedName LIKE '%Chandru%'.
+6. Text search in facts: CaseMaster.BriefFacts LIKE '%stolen%'.
+7. If the question implies a list, add LIMIT 100. Aggregations need no LIMIT.
+8. When the user asks about cases/FIRs, SELECT CaseMaster.CaseMasterID, CaseMaster.CrimeNo plus the relevant columns so answers can cite cases.
+
+OUTPUT FORMAT: respond with ONLY the ZCQL query. No explanation, no markdown fences, no comments.`;
+
+const ANSWER_SYSTEM_PROMPT = `You are KAVACH, a crime intelligence assistant for Karnataka State Police investigators.
+You are given: the investigator's question, the ZCQL query that was executed, and the resulting rows (JSON).
+Write a concise, factual answer for a police investigator.
+Rules:
+- Base EVERY claim strictly on the provided rows. If rows are empty, say no matching records were found.
+- Cite specific cases by CrimeNo (or CaseMasterID) when present in rows.
+- Use lookup translations where helpful: ${invert(LOOKUPS.CrimeSubHead)}; statuses: ${invert(LOOKUPS.CaseStatus)}; cstype A=Chargesheet,B=False Case,C=Undetected.
+- Keep it under 150 words. Plain sentences, no markdown headers.
+- If the language code given is 'kn', answer in Kannada.`;
+
+// ======================= SQL GUARDRAILS =======================
+
+const FORBIDDEN = /\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|MERGE)\b/i;
+
+function validateSQL(sql) {
+  const s = sql.trim().replace(/;+\s*$/, '');
+  if (!/^SELECT\b/i.test(s)) throw new Error('Only SELECT queries are permitted');
+  if (FORBIDDEN.test(s)) throw new Error('Query contains a forbidden operation');
+  if (s.includes(';')) throw new Error('Multiple statements are not allowed');
+  // whitelist any table mentioned after FROM/JOIN
+  const refs = [...s.matchAll(/\b(?:FROM|JOIN)\s+([A-Za-z_]+)/gi)].map(m => m[1]);
+  for (const t of refs) {
+    if (!TABLES.includes(t)) throw new Error(`Table not allowed: ${t}`);
+  }
+  // enforce a LIMIT on non-aggregate queries
+  const isAggregate = /\b(COUNT|SUM|AVG|MIN|MAX)\s*\(/i.test(s) || /\bGROUP BY\b/i.test(s);
+  if (!isAggregate && !/\bLIMIT\s+\d+/i.test(s)) return s + ' LIMIT 100';
+  return s;
+}
+
+/** ZCQL returns rows as [{Table:{col:val}, Table2:{...}}] — flatten for the client. */
+function flattenRows(raw) {
+  return (raw || []).map(r => {
+    const flat = {};
+    for (const [tbl, cols] of Object.entries(r)) {
+      if (cols && typeof cols === 'object') {
+        for (const [c, v] of Object.entries(cols)) {
+          flat[c in flat ? `${tbl}.${c}` : c] = v;
+        }
+      } else flat[tbl] = cols;
+    }
+    return flat;
+  });
+}
+
+function extractSQL(llmText) {
+  // strip accidental fences/labels despite instructions
+  let s = llmText.trim();
+  const fence = s.match(/```(?:sql)?\s*([\s\S]*?)```/i);
+  if (fence) s = fence[1].trim();
+  const idx = s.toUpperCase().indexOf('SELECT');
+  if (idx > 0) s = s.slice(idx);
+  return s;
+}
+
+// ======================= helpers (shared) =======================
 
 function parseCSV(text) {
   const rows = [];
@@ -120,11 +261,57 @@ async function tableCount(catalystApp, t) {
   return rec ? Number(Object.values(rec)[0]) : 0;
 }
 
-// ------------------------------- routes -------------------------------
+// ======================= THE ENGINE =======================
 
-app.get('/health', (req, res) => res.json({ ok: true, app: 'KAVACH', time: new Date().toISOString() }));
+app.post('/api/ask', async (req, res) => {
+  const { question, history = [], language = 'en' } = req.body || {};
+  if (!question || typeof question !== 'string') {
+    return res.status(400).json({ error: 'body must include { question }' });
+  }
+  const trace = {};
+  try {
+    const catalystApp = catalyst.initialize(req);
 
-// Status dashboard with safe, state-aware action links
+    // 1) Build context from recent turns so follow-ups resolve
+    const historyBlock = history.slice(-4).map((h, i) =>
+      `Previous Q${i + 1}: ${h.question}\nPrevious SQL${i + 1}: ${h.sql}`).join('\n');
+    const userPrompt =
+      (historyBlock ? `CONVERSATION SO FAR:\n${historyBlock}\n\n` : '') +
+      `QUESTION: ${question}`;
+
+    // 2) LLM -> SQL
+    const rawSQL = await callLLM(SQL_SYSTEM_PROMPT, userPrompt, 400);
+    trace.rawSQL = rawSQL;
+
+    // 3) Guardrails
+    const sql = validateSQL(extractSQL(rawSQL));
+    trace.sql = sql;
+
+    // 4) Execute on Data Store
+    const rows = flattenRows(await zcql(catalystApp, sql));
+    trace.rowCount = rows.length;
+
+    // 5) LLM -> natural-language answer grounded in rows
+    const evidenceSample = rows.slice(0, 30);
+    const answer = await callLLM(
+      ANSWER_SYSTEM_PROMPT,
+      `Language: ${language}\nQuestion: ${question}\nExecuted ZCQL: ${sql}\nRows (${rows.length} total, first ${evidenceSample.length} shown):\n${JSON.stringify(evidenceSample)}`,
+      500
+    );
+
+    // 6) Evidence = case identifiers found in the rows
+    const evidence = [...new Set(rows.map(r => r.CrimeNo || r.CaseMasterID).filter(Boolean))].slice(0, 50);
+
+    res.json({ answer: answer.trim(), sql, rows: evidenceSample, rowCount: rows.length, evidence });
+  } catch (err) {
+    res.status(500).json({ error: String(err && err.message || err), trace });
+  }
+});
+
+// ======================= v2 ADMIN ROUTES (unchanged) =======================
+
+app.get('/health', (req, res) => res.json({ ok: true, app: 'KAVACH', version: 3, time: new Date().toISOString() }));
+
 app.get('/admin/load', async (req, res) => {
   if (!requireKey(req, res)) return;
   try {
@@ -144,33 +331,26 @@ app.get('/admin/load', async (req, res) => {
     }
     html += `</table>
       <p>Rule: a table can only be Loaded when empty — duplicates are impossible now.</p>
-      <p><a href="files?key=${k}">Check bundled CSV files</a> | <a href="counts?key=${k}">Raw counts JSON</a></p>
-      <p>Refresh this page after each action.</p>`;
+      <p><a href="files?key=${k}">Check bundled CSV files</a> | <a href="counts?key=${k}">Raw counts JSON</a></p>`;
     res.send(html);
   } catch (err) {
     res.status(500).json({ error: String(err && err.message || err) });
   }
 });
 
-// Load one table — refuses if not empty
 app.get('/admin/load/:table', async (req, res) => {
   if (!requireKey(req, res)) return;
   const table = req.params.table;
   if (!TABLES.includes(table)) return res.status(400).json({ error: `unknown table ${table}` });
-
   const csvPath = path.join(__dirname, 'data', `${table}.csv`);
   if (!fs.existsSync(csvPath)) {
     return res.status(404).json({ error: `${table}.csv is NOT bundled in the deployment`, hint: 'check /admin/files' });
   }
-
   try {
     const catalystApp = catalyst.initialize(req);
     const existing = await tableCount(catalystApp, table);
     if (existing > 0) {
-      return res.status(409).json({
-        table, existing,
-        error: 'Table already has rows — load refused to prevent duplicates. Use /admin/clear/' + table + ' first.'
-      });
+      return res.status(409).json({ table, existing, error: 'Table already has rows — use /admin/clear/' + table + ' first.' });
     }
     const rows = parseCSV(fs.readFileSync(csvPath, 'utf8')).map(r => coerceRow(table, r));
     const tableRef = catalystApp.datastore().table(table);
@@ -185,7 +365,6 @@ app.get('/admin/load/:table', async (req, res) => {
   }
 });
 
-// Clear all rows from one table (batched deletes; safe to re-run until 0)
 app.get('/admin/clear/:table', async (req, res) => {
   if (!requireKey(req, res)) return;
   const table = req.params.table;
@@ -198,11 +377,8 @@ app.get('/admin/clear/:table', async (req, res) => {
       const page = await zcql(catalystApp, `SELECT ROWID FROM ${table} LIMIT 200`);
       if (!page || page.length === 0) break;
       const ids = page.map(r => r[table].ROWID);
-      try {
-        await tableRef.deleteRows(ids);              // bulk delete if SDK supports it
-      } catch (_) {
-        await Promise.all(ids.map(id => tableRef.deleteRow(id)));  // fallback: row by row
-      }
+      try { await tableRef.deleteRows(ids); }
+      catch (_) { await Promise.all(ids.map(id => tableRef.deleteRow(id))); }
       deleted += ids.length;
     }
     const remaining = await tableCount(catalystApp, table);
@@ -224,14 +400,11 @@ app.get('/admin/counts', async (req, res) => {
   }
 });
 
-// List CSVs actually shipped in this deployment — diagnoses the Victim mystery
 app.get('/admin/files', (req, res) => {
   if (!requireKey(req, res)) return;
   const dir = path.join(__dirname, 'data');
   if (!fs.existsSync(dir)) return res.json({ dataDir: false, files: [] });
-  const files = fs.readdirSync(dir).map(f => ({
-    name: f, bytes: fs.statSync(path.join(dir, f)).size
-  }));
+  const files = fs.readdirSync(dir).map(f => ({ name: f, bytes: fs.statSync(path.join(dir, f)).size }));
   res.json({ dataDir: true, files, missing: TABLES.filter(t => !files.some(f => f.name === `${t}.csv`)) });
 });
 
