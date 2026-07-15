@@ -199,7 +199,8 @@ Rules:
 const FORBIDDEN = /\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|MERGE)\b/i;
 
 function validateSQL(sql) {
-  const s = sql.trim().replace(/;+\s*$/, '');
+  let s = sql.trim().replace(/;+\s*$/, '');
+  s = s.replace(/COUNT\(\s*\*\s*\)/gi, 'COUNT(ROWID)');  // ZCQL doesn't support COUNT(*)
   if (!/^SELECT\b/i.test(s)) throw new Error('Only SELECT queries are permitted');
   if (FORBIDDEN.test(s)) throw new Error('Query contains a forbidden operation');
   if (/\bJOIN\b/i.test(s)) throw new Error('JOINs are not supported — single-table query required');
