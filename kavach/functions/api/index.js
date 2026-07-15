@@ -104,7 +104,7 @@ const INT_COLS = {
              'GenderID', 'BloodGroupID', 'PhysicallyChallenged'],
   CaseMaster: ['CaseMasterID', 'PolicePersonID', 'PoliceStationID', 'CaseCategoryID',
                'GravityOffenceID', 'CrimeMajorHeadID', 'CrimeMinorHeadID',
-               'CaseStatusID', 'CourtID'],
+               'CaseStatusID', 'CourtID', 'DistrictID'],
   ComplainantDetails: ['ComplainantID', 'CaseMasterID', 'AgeYear', 'OccupationID',
                        'ReligionID', 'CasteID', 'GenderID'],
   Victim: ['VictimMasterID', 'CaseMasterID', 'AgeYear'],
@@ -326,17 +326,32 @@ app.post('/api/ask', async (req, res) => {
       (historyBlock ? `CONVERSATION SO FAR:\n${historyBlock}\n\n` : '') +
       `QUESTION: ${question}`;
 
-    // 2) LLM -> SQL
+    // 2–4) LLM -> SQL -> execute (with self-correction loop)
     const geo = await getGeo(catalystApp);
-    const rawSQL = await callLLM(buildSqlPrompt(geo), userPrompt, 400);
-    trace.rawSQL = rawSQL;
-
-    // 3) Guardrails
-    const sql = validateSQL(extractSQL(rawSQL));
-    trace.sql = sql;
-
-    // 4) Execute on Data Store
-    const rows = flattenRows(await zcql(catalystApp, sql));
+    let sql, rows, lastErr = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const prompt = attempt === 0 ? userPrompt :
+        userPrompt + `\n\nYOUR PREVIOUS QUERY FAILED.\nPrevious query: ${trace.sql || trace.rawSQL}\nDatabase error: ${lastErr}\nWrite a corrected ZCQL query following ALL rules exactly. Output only the query.`;
+      try {
+        const raw = await callLLM(buildSqlPrompt(geo), prompt, 400);
+        trace.rawSQL = raw;
+        sql = validateSQL(extractSQL(raw));
+        trace.sql = sql;
+        rows = flattenRows(await zcql(catalystApp, sql));
+        trace.selfCorrected = attempt > 0;
+        lastErr = null;
+        break;
+      } catch (e) {
+        lastErr = String((e && e.message) || e);
+        trace['attempt' + (attempt + 1) + '_error'] = lastErr;
+      }
+    }
+    if (lastErr) {
+      return res.status(422).json({
+        error: "I couldn't answer that reliably. Try rephrasing — for example, name the crime type, district, or time period explicitly.",
+        detail: lastErr, trace
+      });
+    }
     trace.rowCount = rows.length;
     rows.forEach(r => {
       if (r.PoliceStationID != null) {

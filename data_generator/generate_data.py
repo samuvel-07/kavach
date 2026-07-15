@@ -184,6 +184,8 @@ def main():
             dist_units[d].append(unit_id)
         courts.append([d, f"{dname} District Court", d, STATE_ID, 1])
 
+    unit_names = {u[0]: u[1] for u in units}
+
     employees = []
     emp_id = 0
     unit_emps = {}
@@ -290,7 +292,8 @@ def main():
         court = district_id
         case_master.append([case_id, crimeno, caseno, reg_date.date(), officer, ps,
                             cat_id, gravity, head_id, subhead_id, status_id, court,
-                            inc_from, inc_to, info, lat, lon, brief])
+                            inc_from, inc_to, info, lat, lon, brief,
+                            district_id, next(n for d, n, _, _ in DISTRICTS if d == district_id), unit_names[ps]])
 
     start, end = datetime(years[0], 1, 1), datetime(years[-1], 6, 30)
 
@@ -348,7 +351,7 @@ def main():
     dump("OccupationMaster", ["OccupationID", "OccupationName"], OCCUPATIONS)
     dump("ReligionMaster", ["ReligionID", "ReligionName"], RELIGIONS)
     dump("CasteMaster", ["caste_master_id", "caste_master_name"], CASTES)
-    dump("CaseMaster", ["CaseMasterID", "CrimeNo", "CaseNo", "CrimeRegisteredDate", "PolicePersonID", "PoliceStationID", "CaseCategoryID", "GravityOffenceID", "CrimeMajorHeadID", "CrimeMinorHeadID", "CaseStatusID", "CourtID", "IncidentFromDate", "IncidentToDate", "InfoReceivedPSDate", "latitude", "longitude", "BriefFacts"], case_master)
+    dump("CaseMaster", ["CaseMasterID", "CrimeNo", "CaseNo", "CrimeRegisteredDate", "PolicePersonID", "PoliceStationID", "CaseCategoryID", "GravityOffenceID", "CrimeMajorHeadID", "CrimeMinorHeadID", "CaseStatusID", "CourtID", "IncidentFromDate", "IncidentToDate", "InfoReceivedPSDate", "latitude", "longitude", "BriefFacts", "DistrictID", "DistrictName", "PoliceStationName"], case_master)
     dump("ComplainantDetails", ["ComplainantID", "CaseMasterID", "ComplainantName", "AgeYear", "OccupationID", "ReligionID", "CasteID", "GenderID"], complainants)
     dump("Victim", ["VictimMasterID", "CaseMasterID", "VictimName", "AgeYear", "GenderID", "VictimPolice"], victims)
     dump("Accused", ["AccusedMasterID", "CaseMasterID", "AccusedName", "AgeYear", "GenderID", "PersonID"], accused_rows)
