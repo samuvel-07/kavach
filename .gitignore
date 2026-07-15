@@ -7,6 +7,8 @@ build/
 
 # Generated data (reproducible via data_generator/generate_data.py)
 data_generator/output/
+*.csv
+!kavach/functions/api/data/*.csv
 
 # Catalyst
 .catalystrc

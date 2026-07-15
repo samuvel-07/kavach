@@ -4,6 +4,7 @@
 	"main": "index.js",
 	"author": "samctech01@gmail.com",
 	"dependencies": {
+		"express": "^4.19.2",
 		"zcatalyst-sdk-node": "latest"
 	}
 }
