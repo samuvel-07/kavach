@@ -26,20 +26,40 @@ app.use(express.json());
 
 const ADMIN_KEY = 'kavach2026';
 
-// ======================= LLM CONFIG — FILL THESE =======================
+// ======================= LLM CONFIG (Zoho OAuth) =======================
 const LLM_CONFIG = {
-  url: process.env.LLM_URL || 'PASTE_QUICKML_ENDPOINT_URL_HERE',
-  apiKey: process.env.LLM_KEY || 'PASTE_QUICKML_API_KEY_HERE',
-  model: process.env.LLM_MODEL || 'glm-4.7-flash'
+  url: 'https://api.catalyst.zoho.in/quickml/v1/project/53222000000013074/glm/chat',
+  model: 'crm-di-glm47b_30b_it',
+  org: '60078268134',
+  clientId: process.env.ZOHO_CLIENT_ID || 'PASTE_CLIENT_ID',
+  clientSecret: process.env.ZOHO_CLIENT_SECRET || 'PASTE_CLIENT_SECRET',
+  refreshToken: process.env.ZOHO_REFRESH_TOKEN || 'PASTE_REFRESH_TOKEN'
 };
 
-/** Adapter for the QuickML LLM endpoint (OpenAI-style chat by default). */
+let _tok = { value: null, exp: 0 };
+async function getZohoToken() {
+  if (_tok.value && Date.now() < _tok.exp) return _tok.value;
+  const p = new URLSearchParams({
+    grant_type: 'refresh_token',
+    client_id: LLM_CONFIG.clientId,
+    client_secret: LLM_CONFIG.clientSecret,
+    refresh_token: LLM_CONFIG.refreshToken
+  });
+  const r = await fetch('https://accounts.zoho.in/oauth/v2/token?' + p.toString(), { method: 'POST' });
+  const d = await r.json();
+  if (!d.access_token) throw new Error('OAuth refresh failed: ' + JSON.stringify(d).slice(0, 200));
+  _tok = { value: d.access_token, exp: Date.now() + 50 * 60 * 1000 }; // cache ~50 min
+  return _tok.value;
+}
+
 async function callLLM(systemPrompt, userPrompt, maxTokens = 800) {
+  const token = await getZohoToken();
   const resp = await fetch(LLM_CONFIG.url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${LLM_CONFIG.apiKey}`
+      'Authorization': 'Zoho-oauthtoken ' + token,
+      'CATALYST-ORG': LLM_CONFIG.org
     },
     body: JSON.stringify({
       model: LLM_CONFIG.model,
@@ -47,18 +67,15 @@ async function callLLM(systemPrompt, userPrompt, maxTokens = 800) {
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
       ],
+      max_tokens: maxTokens,
       temperature: 0.1,
-      max_tokens: maxTokens
+      stream: false,
+      chat_template_kwargs: { enable_thinking: false }
     })
   });
-  if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(`LLM HTTP ${resp.status}: ${text.slice(0, 300)}`);
-  }
+  if (!resp.ok) throw new Error(`LLM HTTP ${resp.status}: ${(await resp.text()).slice(0, 300)}`);
   const data = await resp.json();
-  // OpenAI-style; adjust here if QuickML's response shape differs
-  return data.choices?.[0]?.message?.content
-      ?? data.output ?? data.answer ?? JSON.stringify(data).slice(0, 500);
+  return data.choices?.[0]?.message?.content ?? '';
 }
 
 // ======================= DATA MODEL CONSTANTS =======================
