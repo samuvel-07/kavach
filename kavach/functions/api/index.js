@@ -145,14 +145,12 @@ function invert(map) {
 }
 
 function buildSqlPrompt(geo) {
-  const districtMap = Object.entries(geo.districtUnits)
-    .map(([d, ids]) => `${d}: PoliceStationID IN (${ids.join(',')})`).join('\n');
   return `You translate an investigator's question about the Karnataka Police FIR database into ONE ZCQL query (a RESTRICTED SQL dialect).
 
 ABSOLUTE RULE: JOINs are NOT SUPPORTED. Query exactly ONE table per query. No subqueries, no UNION.
 
 TABLES (query one at a time):
-- CaseMaster(CaseMasterID, CrimeNo, CaseNo, CrimeRegisteredDate[DATE 'YYYY-MM-DD'], PolicePersonID, PoliceStationID, CaseCategoryID, GravityOffenceID, CrimeMajorHeadID, CrimeMinorHeadID, CaseStatusID, CourtID, IncidentFromDate, IncidentToDate, latitude, longitude, BriefFacts)
+- CaseMaster(CaseMasterID, CrimeNo, CaseNo, CrimeRegisteredDate[DATE 'YYYY-MM-DD'], PolicePersonID, PoliceStationID, CaseCategoryID, GravityOffenceID, CrimeMajorHeadID, CrimeMinorHeadID, CaseStatusID, CourtID, IncidentFromDate, IncidentToDate, latitude, longitude, BriefFacts, DistrictID, DistrictName, PoliceStationName)
 - Accused(AccusedMasterID, CaseMasterID, AccusedName, AgeYear, GenderID, PersonID)
 - Victim(VictimMasterID, CaseMasterID, VictimName, AgeYear, GenderID, VictimPolice)
 - ComplainantDetails(ComplainantID, CaseMasterID, ComplainantName, AgeYear, OccupationID, GenderID)
@@ -169,9 +167,6 @@ ID MAPPINGS for WHERE clauses:
 - GravityOffenceID: 1=Heinous, 2=Non-Heinous
 - cstype: A=Chargesheet filed, B=False Case, C=Undetected
 
-DISTRICT → POLICE STATION IDs (use these instead of joins; district questions filter CaseMaster.PoliceStationID):
-${districtMap}
-
 RULES:
 1. ONE single-table SELECT. Allowed: WHERE (=,!=,<,>,<=,>=,LIKE,IN,BETWEEN,AND,OR), GROUP BY, HAVING, ORDER BY, LIMIT, COUNT, SUM, AVG, MIN, MAX, DISTINCT.
 2. Dates are literal strings; NO date functions. Year 2025 = BETWEEN '2025-01-01' AND '2025-12-31'.
@@ -180,6 +175,8 @@ RULES:
 5. If the question needs two tables (e.g. details of cases involving a person), use CaseMasterID values already present in CONVERSATION SO FAR, e.g. WHERE CaseMaster.CaseMasterID IN (101,205).
 6. List queries: add LIMIT 100. When listing cases, include CaseMasterID and CrimeNo.
 7. Always use Table.Column notation.
+8. District questions: filter with CaseMaster.DistrictName LIKE '%Mysuru%' or group with GROUP BY CaseMaster.DistrictName. Never join for location.
+9. Station questions: use CaseMaster.PoliceStationName.
 
 OUTPUT: ONLY the ZCQL query. No explanation, no markdown.`;
 }
@@ -371,7 +368,7 @@ app.post('/api/ask', async (req, res) => {
     // 6) Evidence = case identifiers found in the rows
     const evidence = [...new Set(rows.map(r => r.CrimeNo || r.CaseMasterID).filter(Boolean))].slice(0, 50);
 
-    res.json({ answer: answer.trim(), sql, rows: evidenceSample, rowCount: rows.length, evidence });
+    res.json({ answer: answer.trim(), sql, rows: evidenceSample, rowCount: rows.length, evidence, trace });
   } catch (err) {
     res.status(500).json({ error: String(err && err.message || err), trace });
   }

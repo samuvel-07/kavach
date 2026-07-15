@@ -73,6 +73,7 @@ export default function App() {
           next[next.length - 1] = {
             role: 'assistant',
             error: data.error || `Server error ${resp.status}`,
+            detail: data.detail,
             traceSql: data.trace?.sql || data.trace?.rawSQL,
             question: q,
           };
@@ -85,6 +86,7 @@ export default function App() {
             rows: data.rows,
             rowCount: data.rowCount,
             evidence: data.evidence,
+            selfCorrected: data.trace?.selfCorrected || false,
           };
         }
         return next;

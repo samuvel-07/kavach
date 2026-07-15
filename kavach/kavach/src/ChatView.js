@@ -20,19 +20,29 @@ export default function ChatView({ messages, input, setInput, onSend, loading, l
 
   return (
     <div className="page-body">
-      <div className="chat-scroll" ref={scrollRef}>
+      <div className="chat-scroll" ref={scrollRef} role="list" aria-label="Chat messages">
         {isEmpty ? (
           <div className="welcome">
-            <div className="welcome-shield">🛡️</div>
+            <div className="welcome-shield" aria-hidden="true">🛡️</div>
             <h3>KAVACH Intelligence</h3>
             <p>
               Ask questions about Karnataka Police FIR data in natural language.
               I'll translate your question into a database query, execute it, and
               return a factual answer with evidence citations.
             </p>
+            <div className="welcome-hint">
+              <span className="hint-icon" aria-hidden="true">💡</span>
+              Try a question below or type your own
+            </div>
             <div className="suggested">
               {SUGGESTIONS.map((s, i) => (
-                <button key={i} className="chip-suggest" onClick={() => onSend(s)}>
+                <button
+                  key={i}
+                  className={`chip-suggest ${loading ? 'loading' : ''}`}
+                  onClick={() => onSend(s)}
+                  disabled={loading}
+                  aria-label={`Ask: ${s}`}
+                >
                   {s}
                 </button>
               ))}
