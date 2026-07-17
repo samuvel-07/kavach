@@ -3,6 +3,8 @@ import './theme.css';
 import Sidebar from './Sidebar';
 import ChatView from './ChatView';
 import NetworkView from './NetworkView';
+import MapView from './MapView';
+import DashboardView from './DashboardView';
 
 const API_BASE = process.env.NODE_ENV === 'development'
   ? 'https://kavach-60078268134.development.catalystserverless.in'
@@ -14,8 +16,6 @@ function Toast({ text }) {
 
 function PlaceholderPage({ id }) {
   const meta = {
-    map: { icon: '🗺️', label: 'Crime Hotspot Map' },
-    dashboard: { icon: '📊', label: 'Analytics Dashboard' },
     audit: { icon: '📋', label: 'Query Audit Log' },
   };
   const m = meta[id] || { icon: '📦', label: id };
@@ -146,6 +146,13 @@ export default function App() {
             setPage('chat');
             setTimeout(() => doSend(`Give me a summary of case ${crimeNo}`), 100);
           }} />
+        ) : page === 'map' ? (
+          <MapView onAskCase={(crimeNo) => {
+            setPage('chat');
+            setTimeout(() => doSend(`Give me a summary of case ${crimeNo}`), 100);
+          }} />
+        ) : page === 'dashboard' ? (
+          <DashboardView />
         ) : (
           <PlaceholderPage id={page} />
         )}

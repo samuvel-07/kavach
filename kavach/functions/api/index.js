@@ -456,6 +456,54 @@ app.get('/api/network', async (req, res) => {
   }
 });
 
+// ======================= MAP + DASHBOARD DATA =======================
+let _cases = { data: null, exp: 0 };
+async function getCases(catalystApp) {
+  if (_cases.data && Date.now() < _cases.exp) return _cases.data;
+  const rows = await pageAll(catalystApp, 'CaseMaster',
+    'CaseMasterID, CrimeNo, CrimeRegisteredDate, CrimeMinorHeadID, CrimeMajorHeadID, GravityOffenceID, CaseStatusID, latitude, longitude, DistrictName, PoliceStationName');
+  _cases = { data: rows, exp: Date.now() + 10 * 60 * 1000 };
+  return rows;
+}
+
+app.get('/api/map', async (req, res) => {
+  try {
+    const rows = await getCases(catalyst.initialize(req));
+    const { crimeType, from, to } = req.query;
+    let f = rows;
+    if (crimeType) f = f.filter(r => String(r.CrimeMinorHeadID) === String(crimeType));
+    if (from) f = f.filter(r => r.CrimeRegisteredDate >= from);
+    if (to) f = f.filter(r => r.CrimeRegisteredDate <= to);
+    res.json({
+      points: f.map(r => ({
+        id: r.CaseMasterID, crimeNo: r.CrimeNo,
+        lat: Number(r.latitude), lng: Number(r.longitude),
+        type: Number(r.CrimeMinorHeadID), heinous: Number(r.GravityOffenceID) === 1,
+        district: r.DistrictName, date: r.CrimeRegisteredDate
+      })),
+      total: f.length
+    });
+  } catch (err) { res.status(500).json({ error: String(err && err.message || err) }); }
+});
+
+app.get('/api/stats', async (req, res) => {
+  try {
+    const rows = await getCases(catalyst.initialize(req));
+    const byMonth = {}, byDistrict = {}, byType = {}, byStatus = {};
+    rows.forEach(r => {
+      const m = String(r.CrimeRegisteredDate).slice(0, 7);
+      byMonth[m] = (byMonth[m] || 0) + 1;
+      byDistrict[r.DistrictName] = (byDistrict[r.DistrictName] || 0) + 1;
+      byType[r.CrimeMinorHeadID] = (byType[r.CrimeMinorHeadID] || 0) + 1;
+      byStatus[r.CaseStatusID] = (byStatus[r.CaseStatusID] || 0) + 1;
+    });
+    const snatchByMonth = {};
+    rows.filter(r => Number(r.CrimeMinorHeadID) === 10)
+        .forEach(r => { const m = String(r.CrimeRegisteredDate).slice(0, 7); snatchByMonth[m] = (snatchByMonth[m] || 0) + 1; });
+    res.json({ byMonth, byDistrict, byType, byStatus, snatchByMonth, lookups: LOOKUPS, total: rows.length });
+  } catch (err) { res.status(500).json({ error: String(err && err.message || err) }); }
+});
+
 // ======================= v2 ADMIN ROUTES (unchanged) =======================
 
 app.get('/health', (req, res) => res.json({ ok: true, app: 'KAVACH', version: 3, time: new Date().toISOString() }));

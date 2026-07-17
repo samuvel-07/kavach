@@ -936,3 +936,216 @@ textarea:focus-visible { outline: none; } /* handled by composer-box:focus-withi
   background: var(--accent);
   color: var(--bg);
 }
+
+/* ============================================================
+   MAP VIEW
+   ============================================================ */
+.map-page {
+  position: relative;
+  overflow: hidden;
+}
+
+.map-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px calc(var(--unit) * 3);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  gap: calc(var(--unit) * 1.5);
+  flex-wrap: wrap;
+  min-height: 44px;
+}
+
+.map-ctrl-left {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--unit) * 1.5);
+}
+
+.map-select,
+.map-date {
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: var(--sans);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s var(--ease);
+}
+
+.map-select:focus,
+.map-date:focus { border-color: var(--accent-border); }
+
+.map-select { min-width: 150px; }
+.map-date { width: 120px; }
+.map-date::-webkit-calendar-picker-indicator { filter: invert(0.7); }
+
+.map-mode-toggle {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.mode-btn {
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--sans);
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.12s var(--ease);
+}
+
+.mode-btn.on {
+  background: var(--accent-muted);
+  color: var(--accent);
+}
+
+.mode-btn:hover:not(.on) { color: var(--text); }
+
+.map-badge {
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--accent-muted);
+  color: var(--accent);
+  border: 1px solid var(--accent-border);
+}
+
+.map-container {
+  flex: 1;
+  position: relative;
+}
+
+/* Override Leaflet defaults for dark theme */
+.map-container .leaflet-control-attribution {
+  background: rgba(11, 18, 32, 0.7) !important;
+  color: var(--text-dim) !important;
+  font-size: 9px !important;
+}
+
+.map-container .leaflet-control-attribution a { color: var(--muted) !important; }
+
+.map-container .leaflet-popup-content-wrapper {
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4) !important;
+}
+
+.map-container .leaflet-popup-tip { background: var(--surface) !important; }
+
+/* ============================================================
+   DASHBOARD VIEW
+   ============================================================ */
+.dash-page {
+  overflow: hidden;
+}
+
+.dash-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: calc(var(--unit) * 3);
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--unit) * 3);
+}
+
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: calc(var(--unit) * 2);
+}
+
+.kpi {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: calc(var(--unit) * 2.5) calc(var(--unit) * 2);
+  text-align: center;
+}
+
+.kpi-val {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1.1;
+}
+
+.kpi-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  margin-top: 6px;
+}
+
+.kpi-cap {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+.dash-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: calc(var(--unit) * 2);
+}
+
+.dash-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: calc(var(--unit) * 2);
+  display: flex;
+  flex-direction: column;
+}
+
+.dash-card-head {
+  margin-bottom: calc(var(--unit) * 1.5);
+}
+
+.dash-card-head h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+}
+
+.dash-card-cap {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+/* Recharts tooltip */
+.chart-tip {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--text);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+.chart-tip-label {
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: var(--muted);
+}
+
+/* Recharts legend override */
+.recharts-legend-item-text { color: var(--muted) !important; }
+
+/* Responsive: stack on narrow */
+@media (max-width: 900px) {
+  .kpi-row { grid-template-columns: repeat(2, 1fr); }
+  .dash-grid { grid-template-columns: 1fr; }
+}
