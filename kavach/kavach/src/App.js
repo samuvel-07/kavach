@@ -114,6 +114,38 @@ export default function App() {
     doSend(msg.question);
   }, [messages, doSend]);
 
+  const doExport = async () => {
+    if (messages.length === 0) {
+      showToast('No chat history to export');
+      return;
+    }
+    showToast('Generating report...');
+    try {
+      const resp = await fetch(`${API_BASE}/server/api/api/export-pdf`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages, title: 'KAVACH Intelligence Report' })
+      });
+      const ct = resp.headers.get('content-type') || '';
+      if (ct.includes('application/pdf')) {
+        const blob = await resp.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'KAVACH-report.pdf';
+        a.click();
+        window.URL.revokeObjectURL(url);
+      } else {
+        const html = await resp.text();
+        const win = window.open('', '_blank');
+        win.document.write(html);
+        win.document.close();
+      }
+    } catch (err) {
+      showToast('Export failed');
+    }
+  };
+
   return (
     <div className="app-shell">
       <Sidebar active={page} onNav={setPage} />
@@ -123,7 +155,7 @@ export default function App() {
             Karnataka State Police — <span>Crime Intelligence</span>
           </div>
           <div className="topbar-right">
-            <button className="btn-ghost" onClick={() => showToast('PDF export arrives in v2')}>
+            <button className="btn-ghost" onClick={doExport}>
               Export Chat (PDF)
             </button>
             <div className="user-badge">Investigator</div>
