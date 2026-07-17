@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import './theme.css';
 import Sidebar from './Sidebar';
 import ChatView from './ChatView';
@@ -12,6 +12,31 @@ const API_BASE = process.env.NODE_ENV === 'development'
 
 function Toast({ text }) {
   return <div className="toast">{text}</div>;
+}
+
+function LoginGate() {
+  return (
+    <div className="login-gate">
+      <div className="login-card">
+        <div className="login-brand">
+          <h1>KAVACH</h1>
+          <p>Crime Intelligence Platform</p>
+        </div>
+        <div className="login-body">
+          <div className="login-shield" aria-hidden="true">🛡️</div>
+          <h2>Authorized Access Only</h2>
+          <p>Karnataka State Police — Crime Intelligence System</p>
+          <p className="login-sub">This system is restricted to authorized law enforcement personnel. Please sign in with your department credentials.</p>
+          <a href="/__catalyst/auth/login" className="login-btn">
+            Sign in with Zoho
+          </a>
+          <div className="login-footer">
+            Protected by Zoho Catalyst Authentication
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function PlaceholderPage({ id }) {
@@ -29,6 +54,8 @@ function PlaceholderPage({ id }) {
 }
 
 export default function App() {
+  const [authState, setAuthState] = useState('loading'); // 'loading' | 'authenticated' | 'unauthenticated'
+  const [user, setUser] = useState(null); // { email, name, role, pages }
   const [page, setPage] = useState('chat');
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -36,10 +63,37 @@ export default function App() {
   const [language, setLanguage] = useState('en');
   const [toast, setToast] = useState(null);
 
+  // Auth check on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const resp = await fetch(`${API_BASE}/server/api/api/me`);
+        if (resp.ok) {
+          const data = await resp.json();
+          setUser(data);
+          setAuthState('authenticated');
+        } else {
+          setAuthState('unauthenticated');
+        }
+      } catch (_) {
+        setAuthState('unauthenticated');
+      }
+    })();
+  }, []);
+
   const showToast = useCallback((text) => {
     setToast(text);
     setTimeout(() => setToast(null), 2500);
   }, []);
+
+  // Role-based nav gating
+  const handleNav = useCallback((id) => {
+    if (user && user.pages && !user.pages.includes(id)) {
+      showToast(`${id.charAt(0).toUpperCase() + id.slice(1)} requires Supervisor access`);
+      return;
+    }
+    setPage(id);
+  }, [user, showToast]);
 
   const doSend = useCallback(async (text) => {
     const q = (typeof text === 'string' ? text : input).trim();
@@ -47,7 +101,6 @@ export default function App() {
     setInput('');
     setLoading(true);
 
-    // Build history from past assistant turns (last 6)
     const history = messages
       .filter(m => m.role === 'assistant' && m.sql)
       .slice(-6)
@@ -109,7 +162,6 @@ export default function App() {
   const handleRetry = useCallback((idx) => {
     const msg = messages[idx];
     if (!msg?.question) return;
-    // Remove the error message
     setMessages(prev => prev.filter((_, i) => i !== idx));
     doSend(msg.question);
   }, [messages, doSend]);
@@ -146,9 +198,36 @@ export default function App() {
     }
   };
 
+  // Loading spinner while checking auth
+  if (authState === 'loading') {
+    return (
+      <div className="login-gate">
+        <div className="login-card">
+          <div className="login-brand">
+            <h1>KAVACH</h1>
+            <p>Crime Intelligence Platform</p>
+          </div>
+          <div className="login-body">
+            <div className="thinking" aria-label="Authenticating">
+              <div className="think-dot" /><div className="think-dot" /><div className="think-dot" />
+            </div>
+            <p>Verifying credentials…</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Login gate for unauthenticated users
+  if (authState === 'unauthenticated') {
+    return <LoginGate />;
+  }
+
+  const roleBadge = user?.role === 'supervisor' ? 'Supervisor' : 'Investigator';
+
   return (
     <div className="app-shell">
-      <Sidebar active={page} onNav={setPage} />
+      <Sidebar active={page} onNav={handleNav} allowedPages={user?.pages} />
       <div className="main-area">
         <div className="topbar">
           <div className="topbar-left">
@@ -158,7 +237,10 @@ export default function App() {
             <button className="btn-ghost" onClick={doExport}>
               Export Chat (PDF)
             </button>
-            <div className="user-badge">Investigator</div>
+            <div className="user-badge" title={user?.email || ''}>
+              <span className={`role-dot ${user?.role === 'supervisor' ? 'role-super' : ''}`} />
+              {user?.name || roleBadge}
+            </div>
           </div>
         </div>
 

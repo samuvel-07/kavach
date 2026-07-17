@@ -8,7 +8,7 @@ const ITEMS = [
   { id: 'audit',     label: 'Audit',     icon: <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></>, tag: 'Soon' },
 ];
 
-export default function Sidebar({ active, onNav }) {
+export default function Sidebar({ active, onNav, allowedPages }) {
   return (
     <aside className="sidebar">
       <div className="sidebar-brand">
@@ -16,19 +16,25 @@ export default function Sidebar({ active, onNav }) {
         <p>Crime Intelligence</p>
       </div>
       <nav className="sidebar-nav">
-        {ITEMS.map(it => (
-          <button
-            key={it.id}
-            className={`nav-btn ${active === it.id ? 'active' : ''}`}
-            onClick={() => onNav(it.id)}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              {it.icon}
-            </svg>
-            {it.label}
-            {it.tag && <span className="nav-tag">{it.tag}</span>}
-          </button>
-        ))}
+        {ITEMS.map(it => {
+          const allowed = !allowedPages || allowedPages.includes(it.id);
+          return (
+            <button
+              key={it.id}
+              className={`nav-btn ${active === it.id ? 'active' : ''} ${!allowed ? 'nav-locked' : ''}`}
+              onClick={() => onNav(it.id)}
+              title={!allowed ? 'Requires Supervisor access' : it.label}
+              aria-label={it.label}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                {it.icon}
+              </svg>
+              {it.label}
+              {!allowed && <span className="nav-lock">🔒</span>}
+              {it.tag && allowed && <span className="nav-tag">{it.tag}</span>}
+            </button>
+          );
+        })}
       </nav>
       <div className="sidebar-foot">
         <span className="dot-live" />

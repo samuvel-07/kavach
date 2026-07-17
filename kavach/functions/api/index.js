@@ -577,6 +577,48 @@ app.post('/api/export-pdf', async (req, res) => {
   }
 });
 
+// ======================= AUTH / RBAC =======================
+
+const ROLE_PAGES = {
+  investigator: ['chat', 'network', 'map'],
+  supervisor:   ['chat', 'network', 'map', 'dashboard', 'audit'],
+};
+
+app.get('/api/me', async (req, res) => {
+  try {
+    const catalystApp = catalyst.initialize(req);
+    let user;
+    try {
+      user = await catalystApp.userManagement().getCurrentUser();
+    } catch (authErr) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+    const email = user.email_id || user.EmailId || '';
+    const name = [user.first_name, user.last_name].filter(Boolean).join(' ') || email.split('@')[0];
+
+    // Look up role from UserRole table (default to investigator)
+    let role = 'investigator';
+    try {
+      const rows = await zcql(catalystApp,
+        `SELECT UserRole.Role FROM UserRole WHERE UserRole.Email = '${email.replace(/'/g, "''")}'`);
+      if (rows && rows.length > 0) {
+        role = rows[0].UserRole.Role || 'investigator';
+      }
+    } catch (_) {
+      // Table may not exist yet — default role
+    }
+
+    res.json({
+      email,
+      name,
+      role,
+      pages: ROLE_PAGES[role] || ROLE_PAGES.investigator,
+    });
+  } catch (err) {
+    res.status(401).json({ error: 'Not authenticated', detail: String(err && err.message || err) });
+  }
+});
+
 // ======================= v2 ADMIN ROUTES (unchanged) =======================
 
 app.get('/health', (req, res) => res.json({ ok: true, app: 'KAVACH', version: 3, time: new Date().toISOString() }));
