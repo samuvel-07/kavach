@@ -144,12 +144,12 @@ export default function App() {
         ) : page === 'network' ? (
           <NetworkView onAskCase={(crimeNo) => {
             setPage('chat');
-            setTimeout(() => doSend(`Give me a summary of case ${crimeNo}`), 100);
+            setTimeout(() => doSend(`Show all details of the case with CrimeNo ${crimeNo}`), 100);
           }} />
         ) : page === 'map' ? (
           <MapView onAskCase={(crimeNo) => {
             setPage('chat');
-            setTimeout(() => doSend(`Give me a summary of case ${crimeNo}`), 100);
+            setTimeout(() => doSend(`Show all details of the case with CrimeNo ${crimeNo}`), 100);
           }} />
         ) : page === 'dashboard' ? (
           <DashboardView />

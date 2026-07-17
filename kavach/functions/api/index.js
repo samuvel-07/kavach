@@ -177,6 +177,7 @@ RULES:
 7. Always use Table.Column notation.
 8. District questions: filter with CaseMaster.DistrictName LIKE '%Mysuru%' or group with GROUP BY CaseMaster.DistrictName. Never join for location.
 9. Station questions: use CaseMaster.PoliceStationName.
+10. Case lookup by CrimeNo: when the user asks about a specific case number (long numeric string), use WHERE CaseMaster.CrimeNo = 'theValue'. CrimeNo is the FIR registration number. Do NOT confuse with CaseNo or CaseMasterID.
 
 OUTPUT: ONLY the ZCQL query. No explanation, no markdown.`;
 }

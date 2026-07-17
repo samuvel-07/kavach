@@ -14,7 +14,13 @@ const CRIME_TYPES = {
   '18': 'NDPS Trafficking', '19': 'Rioting', '20': 'Unlawful Assembly',
 };
 
-/* Heat layer via canvas overlay — lightweight, no extra dep */
+/* ── Professional Heat Map ──
+   Two-pass approach:
+   Pass 1: Draw grayscale intensity blobs (additive blending so overlapping
+           areas accumulate brightness → natural density appearance)
+   Pass 2: Colorize via ImageData — map intensity to a blue→amber→red gradient
+   Radius is zoom-adaptive so dots stay proportional at any zoom level. */
+
 function HeatOverlay({ points }) {
   const map = useMap();
   const canvasRef = useRef(null);
@@ -22,9 +28,25 @@ function HeatOverlay({ points }) {
   useEffect(() => {
     if (!map || points.length === 0) return;
     const canvas = document.createElement('canvas');
+    canvas.style.pointerEvents = 'none';
     canvasRef.current = canvas;
     const pane = map.getPane('overlayPane');
     pane.appendChild(canvas);
+
+    // Color gradient lookup (256 entries)
+    const gradCanvas = document.createElement('canvas');
+    gradCanvas.width = 256; gradCanvas.height = 1;
+    const gCtx = gradCanvas.getContext('2d');
+    const grd = gCtx.createLinearGradient(0, 0, 256, 0);
+    grd.addColorStop(0,    'rgba(0,0,0,0)');         // transparent
+    grd.addColorStop(0.15, 'rgba(30,60,120,0.4)');   // deep blue
+    grd.addColorStop(0.35, 'rgba(34,211,238,0.6)');  // cyan
+    grd.addColorStop(0.55, 'rgba(245,166,35,0.75)'); // amber
+    grd.addColorStop(0.75, 'rgba(248,113,113,0.85)');// red
+    grd.addColorStop(1,    'rgba(255,255,255,0.95)');// white-hot
+    gCtx.fillStyle = grd;
+    gCtx.fillRect(0, 0, 256, 1);
+    const palette = gCtx.getImageData(0, 0, 256, 1).data;
 
     function draw() {
       const size = map.getSize();
@@ -36,22 +58,41 @@ function HeatOverlay({ points }) {
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+      // Zoom-adaptive radius: smaller at zoom-out, bigger at zoom-in
+      const zoom = map.getZoom();
+      const radius = Math.max(4, Math.min(40, Math.pow(2, zoom - 5) * 6));
+      const intensity = Math.min(0.12, 0.03 + (zoom - 6) * 0.008);
+
+      // Pass 1: grayscale intensity with additive blending
+      ctx.globalCompositeOperation = 'lighter';
       points.forEach(p => {
         const pt = map.latLngToContainerPoint([p.lat, p.lng]);
-        const r = 18;
-        const grd = ctx.createRadialGradient(pt.x, pt.y, 0, pt.x, pt.y, r);
-        if (p.heinous) {
-          grd.addColorStop(0, 'rgba(248,113,113,0.6)');
-          grd.addColorStop(1, 'rgba(248,113,113,0)');
-        } else {
-          grd.addColorStop(0, 'rgba(245,166,35,0.5)');
-          grd.addColorStop(1, 'rgba(245,166,35,0)');
-        }
+        // Skip offscreen points
+        if (pt.x < -radius || pt.y < -radius || pt.x > canvas.width + radius || pt.y > canvas.height + radius) return;
+        const g = ctx.createRadialGradient(pt.x, pt.y, 0, pt.x, pt.y, radius);
+        const alpha = p.heinous ? intensity * 1.5 : intensity;
+        g.addColorStop(0, `rgba(255,255,255,${alpha})`);
+        g.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = g;
         ctx.beginPath();
-        ctx.arc(pt.x, pt.y, r, 0, Math.PI * 2);
-        ctx.fillStyle = grd;
+        ctx.arc(pt.x, pt.y, radius, 0, Math.PI * 2);
         ctx.fill();
       });
+
+      // Pass 2: colorize grayscale → palette
+      ctx.globalCompositeOperation = 'source-over';
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const px = imgData.data;
+      for (let i = 0; i < px.length; i += 4) {
+        const v = px[i]; // grayscale intensity (R channel from additive white)
+        if (v === 0) continue;
+        const idx = Math.min(255, v) * 4;
+        px[i]     = palette[idx];
+        px[i + 1] = palette[idx + 1];
+        px[i + 2] = palette[idx + 2];
+        px[i + 3] = palette[idx + 3];
+      }
+      ctx.putImageData(imgData, 0, 0);
     }
 
     draw();
@@ -126,9 +167,9 @@ export default function MapView({ onAskCase }) {
             className="map-date" aria-label="To date" placeholder="To" />
           <div className="map-mode-toggle">
             <button className={`mode-btn ${mode === 'heat' ? 'on' : ''}`}
-              onClick={() => setMode('heat')}>Heat</button>
+              onClick={() => setMode('heat')} aria-label="Heat map view">Heat</button>
             <button className={`mode-btn ${mode === 'points' ? 'on' : ''}`}
-              onClick={() => setMode('points')}>Points</button>
+              onClick={() => setMode('points')} aria-label="Point markers view">Points</button>
           </div>
         </div>
         <div className="map-badge">
@@ -160,16 +201,17 @@ export default function MapView({ onAskCase }) {
               }}
             >
               <Popup>
-                <div style={{ color: '#0B1220', fontSize: '12px', lineHeight: 1.5 }}>
-                  <strong>{p.crimeNo}</strong><br />
+                <div style={{ color: '#E6EBF4', fontSize: '12px', lineHeight: 1.6 }}>
+                  <strong style={{ color: '#F5A623' }}>{p.crimeNo}</strong><br />
                   {CRIME_TYPES[String(p.type)] || 'Unknown'}<br />
                   {p.district} · {p.date}<br />
                   <button
                     onClick={() => onAskCase(p.crimeNo)}
                     style={{
-                      marginTop: 4, padding: '3px 8px', borderRadius: 4,
-                      border: '1px solid #F5A623', background: 'transparent',
+                      marginTop: 6, padding: '4px 10px', borderRadius: 4,
+                      border: '1px solid #F5A623', background: 'rgba(245,166,35,0.1)',
                       color: '#F5A623', cursor: 'pointer', fontSize: 11,
+                      fontWeight: 600,
                     }}
                   >Ask KAVACH about this case</button>
                 </div>
