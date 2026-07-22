@@ -12,6 +12,7 @@
   color: #e2e8f0;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
   animation: slide-up 0.3s ease-out;
+  max-height: 70vh;
 }
 
 @keyframes slide-up {
@@ -108,7 +109,9 @@
 /* Body Layout */
 .workspace-body {
   display: flex;
-  min-height: 400px;
+  min-height: 300px;
+  flex: 1;
+  overflow: hidden;
 }
 
 .workspace-main {
@@ -116,6 +119,8 @@
   display: flex;
   flex-direction: column;
   border-right: 1px solid rgba(255, 255, 255, 0.05);
+  min-width: 0;
+  overflow: hidden;
 }
 
 .workspace-sidebar {
@@ -125,6 +130,7 @@
   display: flex;
   flex-direction: column;
   gap: 24px;
+  overflow-y: auto;
 }
 
 /* Tabs */
@@ -199,7 +205,7 @@
   padding: 20px;
   flex: 1;
   overflow-y: auto;
-  max-height: 500px;
+  overflow-x: auto;
 }
 
 /* Tab Specifics */
