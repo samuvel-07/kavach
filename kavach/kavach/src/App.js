@@ -63,6 +63,8 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [language, setLanguage] = useState('en');
   const [toast, setToast] = useState(null);
+  const [boardData, setBoardData] = useState(null);
+  const [boardLoading, setBoardLoading] = useState(false);
 
   // Auth check on mount
   useEffect(() => {
@@ -95,6 +97,34 @@ export default function App() {
     }
     setPage(id);
   }, [user, showToast]);
+
+  // Fetch board data from chat context
+  const fetchBoard = useCallback(async (evidence, rows) => {
+    const crimeNos = evidence || [];
+    // Extract accused names from rows if present
+    const accusedNames = [...new Set(
+      (rows || []).map(r => r.AccusedName).filter(Boolean)
+    )].slice(0, 20);
+
+    if (crimeNos.length === 0 && accusedNames.length === 0) return;
+
+    setBoardLoading(true);
+    try {
+      const resp = await fetch(`${API_BASE}/server/api/api/board`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ crimeNos, accusedNames }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        setBoardData(data);
+      }
+    } catch (_) {
+      // Board fetch failed silently — the graph mode is still available
+    } finally {
+      setBoardLoading(false);
+    }
+  }, []);
 
   const doSend = useCallback(async (text) => {
     const q = (typeof text === 'string' ? text : input).trim();
@@ -143,6 +173,8 @@ export default function App() {
             insights: data.insights,
             selfCorrected: data.trace?.selfCorrected || false,
           };
+          // Fire board fetch with chat context
+          fetchBoard(data.evidence, data.rows);
         }
         return next;
       });
@@ -159,7 +191,7 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [input, loading, messages, language]);
+  }, [input, loading, messages, language, fetchBoard]);
 
   const handleRetry = useCallback((idx) => {
     const msg = messages[idx];
@@ -227,11 +259,6 @@ export default function App() {
 
   const roleBadge = user?.role === 'supervisor' ? 'Supervisor' : 'Investigator';
 
-  // Last successful chat rows
-  const lastAssistantMsg = [...messages].reverse().find(m => m.role === 'assistant' && !m.loading && !m.error);
-  const chatRows = lastAssistantMsg?.rows || null;
-  const chatEvidence = lastAssistantMsg?.evidence || [];
-
   return (
     <div className="app-shell">
       <Sidebar active={page} onNav={handleNav} allowedPages={user?.pages} />
@@ -264,8 +291,8 @@ export default function App() {
           />
         ) : page === 'network' ? (
           <NetworkView 
-            chatRows={chatRows}
-            chatEvidence={chatEvidence}
+            boardData={boardData}
+            boardLoading={boardLoading}
             onAskCase={(crimeNo) => {
               setPage('chat');
               setTimeout(() => doSend(`Show all details of the case with CrimeNo ${crimeNo}`), 100);

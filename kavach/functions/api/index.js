@@ -491,6 +491,122 @@ app.post('/api/intelligence', async (req, res) => {
   }
 });
 
+// ======================= CHAT-DRIVEN INVESTIGATION BOARD =======================
+app.post('/api/board', async (req, res) => {
+  const { crimeNos = [], accusedNames = [] } = req.body || {};
+  try {
+    const catalystApp = catalyst.initialize(req);
+
+    // 1. Resolve the set of CaseMasterIDs in scope
+    let caseIds = [];
+    if (crimeNos.length) {
+      const inList = crimeNos.slice(0, 50).map(c => `'${String(c).replace(/'/g, '')}'`).join(',');
+      const cm = await zcql(catalystApp,
+        `SELECT CaseMasterID, CrimeNo FROM CaseMaster WHERE CrimeNo IN (${inList}) LIMIT 100`);
+      caseIds = cm.map(r => r.CaseMaster.CaseMasterID);
+    }
+    // If names given (e.g. "repeat offenders" answer), find their cases
+    if (accusedNames.length) {
+      for (const nm of accusedNames.slice(0, 20)) {
+        const safe = String(nm).replace(/'/g, '');
+        const ac = await zcql(catalystApp,
+          `SELECT CaseMasterID FROM Accused WHERE AccusedName LIKE '%${safe}%' LIMIT 50`);
+        ac.forEach(r => caseIds.push(r.Accused.CaseMasterID));
+      }
+    }
+    caseIds = [...new Set(caseIds)].slice(0, 60);
+    if (!caseIds.length) return res.json({ nodes: [], edges: [], cases: [] });
+
+    const idList = caseIds.join(',');
+
+    // 2. Case details
+    const cases = (await zcql(catalystApp,
+      `SELECT CaseMasterID, CrimeNo, CrimeMinorHeadID, GravityOffenceID, CrimeRegisteredDate, DistrictName, CaseStatusID, BriefFacts FROM CaseMaster WHERE CaseMasterID IN (${idList}) LIMIT 100`
+    )).map(r => r.CaseMaster);
+
+    // 3. Accused + victims in those cases
+    const accused = (await zcql(catalystApp,
+      `SELECT AccusedName, AgeYear, GenderID, CaseMasterID FROM Accused WHERE CaseMasterID IN (${idList}) LIMIT 300`
+    )).map(r => r.Accused);
+    const victims = (await zcql(catalystApp,
+      `SELECT VictimName, AgeYear, CaseMasterID FROM Victim WHERE CaseMasterID IN (${idList}) LIMIT 300`
+    )).map(r => r.Victim);
+
+    const caseById = {}; cases.forEach(c => { caseById[c.CaseMasterID] = c; });
+
+    // 4. Build person nodes with their case list
+    const people = {};
+    accused.forEach(a => {
+      const p = (people[a.AccusedName] = people[a.AccusedName] || {
+        id: a.AccusedName, name: a.AccusedName, role: 'accused', age: a.AgeYear, cases: []
+      });
+      const c = caseById[a.CaseMasterID];
+      if (c) p.cases.push({
+        crimeNo: c.CrimeNo, date: c.CrimeRegisteredDate,
+        typeId: c.CrimeMinorHeadID, district: c.DistrictName,
+        heinous: Number(c.GravityOffenceID) === 1,
+        briefFacts: c.BriefFacts || ''
+      });
+    });
+    const victimNodes = victims.map(v => {
+      const c = caseById[v.CaseMasterID];
+      return {
+        id: 'V:' + v.VictimName + ':' + v.CaseMasterID,
+        name: v.VictimName, role: 'victim', age: v.AgeYear,
+        cases: c ? [{
+          crimeNo: c.CrimeNo, date: c.CrimeRegisteredDate,
+          typeId: c.CrimeMinorHeadID, district: c.DistrictName,
+          heinous: Number(c.GravityOffenceID) === 1,
+          briefFacts: c.BriefFacts || ''
+        }] : []
+      };
+    });
+    Object.values(people).forEach(p => {
+      const heinous = p.cases.filter(c => c.heinous).length;
+      p.caseCount = p.cases.length;
+      p.heinousCount = heinous;
+      p.risk = Math.min(100, p.cases.length * 12 + heinous * 20);
+      p.districts = [...new Set(p.cases.map(c => c.district).filter(Boolean))];
+    });
+    victimNodes.forEach(v => {
+      v.caseCount = v.cases.length;
+      v.heinousCount = 0;
+      v.risk = 0;
+      v.districts = [...new Set(v.cases.map(c => c.district).filter(Boolean))];
+    });
+
+    // 5. Co-accused edges (shared case within this scope)
+    const byCase = {};
+    accused.forEach(a => (byCase[a.CaseMasterID] = byCase[a.CaseMasterID] || []).push(a.AccusedName));
+    const edgeMap = {};
+    Object.values(byCase).forEach(names => {
+      const uniq = [...new Set(names)];
+      for (let i = 0; i < uniq.length; i++)
+        for (let j = i + 1; j < uniq.length; j++) {
+          const k = [uniq[i], uniq[j]].sort().join('~~');
+          edgeMap[k] = (edgeMap[k] || 0) + 1;
+        }
+    });
+    const edges = Object.entries(edgeMap).map(([k, w]) => {
+      const [s, t] = k.split('~~');
+      return { source: s, target: t, weight: w, type: 'co-accused' };
+    });
+    // victim→case→accused links
+    victims.forEach(v => {
+      (byCase[v.CaseMasterID] || []).forEach(accName => {
+        edges.push({
+          source: 'V:' + v.VictimName + ':' + v.CaseMasterID,
+          target: accName, weight: 1, type: 'victim-of'
+        });
+      });
+    });
+
+    res.json({ nodes: [...Object.values(people), ...victimNodes], edges, cases });
+  } catch (err) {
+    res.status(500).json({ error: String(err && err.message || err) });
+  }
+});
+
 // ======================= NETWORK GRAPH =======================
 let _network = { data: null, exp: 0 };
 
