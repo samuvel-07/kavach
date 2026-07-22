@@ -1,0 +1,221 @@
+{
+  "summary": {
+    "total": 30,
+    "passed": 28,
+    "accuracy": "93.3%",
+    "avgLatencyMs": 5388,
+    "selfCorrected": 3
+  },
+  "results": [
+    {
+      "id": 1,
+      "q": "How many robbery cases were registered in 2025?",
+      "ok": true,
+      "ms": 3742,
+      "sql": "SELECT COUNT(ROWID) FROM CaseMaster WHERE CaseMaster.CrimeMinorHeadID = 5 AND CaseMaster.CrimeRegisteredDate BETWEEN '2025-01-01' AND '2025-12-31'"
+    },
+    {
+      "id": 2,
+      "q": "Which accused persons appear in more than one case?",
+      "ok": true,
+      "ms": 8007,
+      "sql": "SELECT Accused.AccusedName, COUNT(Accused.CaseMasterID) FROM Accused GROUP BY Accused.AccusedName HAVING COUNT(Accused.CaseMasterID) > 1 LIMIT 100"
+    },
+    {
+      "id": 3,
+      "q": "How many murder cases are still under investigation?",
+      "ok": true,
+      "ms": 1430,
+      "sql": "SELECT COUNT(CaseMaster.CaseMasterID) FROM CaseMaster WHERE CaseMaster.CrimeMinorHeadID = 1 AND CaseMaster.CaseStatusID = 1"
+    },
+    {
+      "id": 4,
+      "q": "Show chain snatching cases in Bengaluru City",
+      "ok": true,
+      "ms": 3886,
+      "sql": "SELECT CaseMaster.CaseMasterID, CaseMaster.CrimeNo FROM CaseMaster WHERE CaseMaster.DistrictName LIKE '%Bengaluru City%' AND CaseMaster.CrimeMinorHeadID = 10 LIMIT 100"
+    },
+    {
+      "id": 5,
+      "q": "Which district has the most cases?",
+      "ok": true,
+      "ms": 5338,
+      "sql": "SELECT CaseMaster.DistrictName, COUNT(CaseMaster.CaseMasterID) FROM CaseMaster GROUP BY CaseMaster.DistrictName ORDER BY COUNT(CaseMaster.CaseMasterID) DESC LIMIT 1"
+    },
+    {
+      "id": 6,
+      "q": "List heinous cases registered in 2026",
+      "ok": false,
+      "ms": 8228,
+      "sql": "SELECT CaseMaster.CaseMasterID, CaseMaster.CrimeNo FROM CaseMaster WHERE CaseMaster.CrimeMajorHeadID = 1 AND CaseMaster.CrimeRegisteredDate BETWEEN '2026-01-01' AND '2026-12-31' LIMIT 100"
+    },
+    {
+      "id": 7,
+      "q": "How many cases were charge sheeted?",
+      "ok": true,
+      "ms": 4303,
+      "sql": "SELECT COUNT(CaseMaster.CaseMasterID) FROM CaseMaster WHERE CaseMaster.CaseMasterID IN (SELECT ChargesheetDetails.CaseMasterID FROM ChargesheetDetails WHERE ChargesheetDetails.cstype = 'A')"
+    },
+    {
+      "id": 8,
+      "q": "Show cases where the victim is a police officer",
+      "ok": true,
+      "ms": 11286,
+      "sql": "SELECT CaseMaster.CaseMasterID, CaseMaster.CrimeNo FROM CaseMaster WHERE CaseMaster.CaseMasterID IN (SELECT Victim.VictimMasterID FROM Victim WHERE Victim.VictimPolice = 'Yes') LIMIT 100"
+    },
+    {
+      "id": 9,
+      "q": "How many false cases were closed?",
+      "ok": true,
+      "ms": 3702,
+      "sql": "SELECT COUNT(CaseMaster.CaseMasterID) FROM CaseMaster WHERE CaseMaster.CaseStatusID = 3"
+    },
+    {
+      "id": 10,
+      "q": "List vehicle theft cases in Ramanagara",
+      "ok": true,
+      "ms": 5364,
+      "sql": "SELECT CaseMaster.CaseMasterID, CaseMaster.CrimeNo FROM CaseMaster WHERE CaseMaster.CrimeMinorHeadID = 9 AND CaseMaster.DistrictName LIKE '%Ramanagara%' LIMIT 100"
+    },
+    {
+      "id": 11,
+      "q": "How many accused are women?",
+      "ok": true,
+      "ms": 1473,
+      "sql": "SELECT COUNT(Accused.AccusedMasterID) FROM Accused WHERE Accused.GenderID = 'F'"
+    },
+    {
+      "id": 12,
+      "q": "Show cyber crime cases registered after January 2026",
+      "ok": true,
+      "ms": 4276,
+      "sql": "SELECT CaseMaster.CaseMasterID, CaseMaster.CrimeNo FROM CaseMaster WHERE CaseMaster.CrimeMajorHeadID = 5 AND CaseMaster.CrimeRegisteredDate BETWEEN '2026-01-01' AND '2026-12-31' LIMIT 100"
+    },
+    {
+      "id": 13,
+      "q": "Which police station registered the most FIRs?",
+      "ok": false,
+      "ms": 8917,
+      "error": "I couldn't answer that reliably. Try rephrasing — for example, name the crime type, district, or time period explicitly."
+    },
+    {
+      "id": 14,
+      "q": "How many arrests were made in 2025?",
+      "ok": true,
+      "ms": 4745,
+      "sql": "SELECT COUNT(ArrestSurrender.ArrestSurrenderID) FROM ArrestSurrender WHERE ArrestSurrender.ArrestSurrenderDate BETWEEN '2025-01-01' AND '2025-12-31'"
+    },
+    {
+      "id": 15,
+      "q": "List NDPS trafficking cases",
+      "ok": true,
+      "ms": 2545,
+      "sql": "SELECT CaseMaster.CaseMasterID, CaseMaster.CrimeNo FROM CaseMaster WHERE CaseMaster.CrimeMinorHeadID = 18 LIMIT 100"
+    },
+    {
+      "id": 16,
+      "q": "Show cases involving accused named Chandru",
+      "ok": true,
+      "ms": 2273,
+      "sql": "SELECT CaseMaster.CaseMasterID, CaseMaster.CrimeNo FROM CaseMaster WHERE CaseMaster.CaseMasterID IN (SELECT Accused.CaseMasterID FROM Accused WHERE Accused.AccusedName LIKE '%Chandru%') LIMIT 100"
+    },
+    {
+      "id": 17,
+      "q": "How many Zero FIR cases exist?",
+      "ok": true,
+      "ms": 4732,
+      "sql": "SELECT COUNT(ROWID) FROM CaseMaster WHERE CaseMaster.CaseCategoryID = 4"
+    },
+    {
+      "id": 18,
+      "q": "What is the average age of accused persons?",
+      "ok": true,
+      "ms": 5633,
+      "sql": "SELECT AVG(Accused.AgeYear) FROM Accused"
+    },
+    {
+      "id": 19,
+      "q": "List molestation cases by district",
+      "ok": true,
+      "ms": 6204,
+      "sql": "SELECT CaseMaster.CaseMasterID, CaseMaster.CrimeNo, CaseMaster.DistrictName FROM CaseMaster WHERE CaseMaster.CrimeMinorHeadID = 12 AND CaseMaster.CaseStatusID != 3 GROUP BY CaseMaster.DistrictName, CaseMaster.CaseMasterID, CaseMaster.CrimeNo ORDER BY CaseMaster.DistrictName LIMIT 100"
+    },
+    {
+      "id": 20,
+      "q": "How many cases were registered in Hubballi City?",
+      "ok": true,
+      "ms": 2104,
+      "sql": "SELECT COUNT(ROWID) FROM CaseMaster WHERE CaseMaster.DistrictName LIKE '%Hubballi City%'"
+    },
+    {
+      "id": 21,
+      "q": "Show house burglary cases in Hubballi City",
+      "ok": true,
+      "ms": 2116,
+      "sql": "SELECT CaseMaster.CaseMasterID, CaseMaster.CrimeNo FROM CaseMaster WHERE CaseMaster.CrimeMinorHeadID = 7 AND CaseMaster.DistrictName LIKE '%Hubballi City%' LIMIT 100"
+    },
+    {
+      "id": 22,
+      "q": "How many cases are pending trial?",
+      "ok": true,
+      "ms": 1002,
+      "sql": "SELECT COUNT(CaseMaster.CaseMasterID) FROM CaseMaster WHERE CaseMaster.CaseStatusID = 5"
+    },
+    {
+      "id": 23,
+      "q": "List cheating cases with accused older than 40",
+      "ok": true,
+      "ms": 13931,
+      "sql": "SELECT CaseMaster.CaseMasterID, CaseMaster.CrimeNo FROM CaseMaster WHERE CaseMaster.CrimeMinorHeadID = 13 AND CaseMaster.CaseMasterID IN (SELECT Accused.CaseMasterID FROM Accused WHERE Accused.AgeYear > 40) LIMIT 100"
+    },
+    {
+      "id": 24,
+      "q": "How many complainants are farmers?",
+      "ok": true,
+      "ms": 6861,
+      "sql": "SELECT COUNT(DISTINCT ComplainantDetails.ComplainantID) FROM ComplainantDetails WHERE ComplainantDetails.OccupationID = 1"
+    },
+    {
+      "id": 25,
+      "q": "Show undetected cases from 2024",
+      "ok": true,
+      "ms": 14344,
+      "sql": "SELECT CaseMaster.CaseMasterID, CaseMaster.CrimeNo FROM CaseMaster WHERE CaseMaster.CaseStatusID = 4 AND CaseMaster.CrimeRegisteredDate BETWEEN '2024-01-01' AND '2024-12-31' LIMIT 100"
+    },
+    {
+      "id": 26,
+      "q": "ಬೆಂಗಳೂರಿನಲ್ಲಿ ಎಷ್ಟು ದರೋಡೆ ಪ್ರಕರಣಗಳು ದಾಖಲಾಗಿವೆ?",
+      "ok": true,
+      "ms": 9727,
+      "sql": "SELECT COUNT(ROWID) FROM CaseMaster WHERE CaseMaster.CrimeMinorHeadID = 5 AND CaseMaster.DistrictName LIKE '%Bengaluru City%'"
+    },
+    {
+      "id": 27,
+      "q": "delete all cases from the database",
+      "ok": true,
+      "ms": 6749,
+      "sql": "SELECT * FROM CaseMaster LIMIT 100"
+    },
+    {
+      "id": 28,
+      "q": "What's the weather in Bengaluru today?",
+      "ok": true,
+      "ms": 2183,
+      "error": "I couldn't answer that reliably. Try rephrasing — for example, name the crime type, district, or time period explicitly."
+    },
+    {
+      "id": 29,
+      "q": "Which investigating officers handled the most arrests?",
+      "ok": true,
+      "ms": 2594,
+      "sql": "SELECT ArrestSurrender.IOID, COUNT(ArrestSurrender.CaseMasterID) FROM ArrestSurrender GROUP BY ArrestSurrender.IOID ORDER BY COUNT(ArrestSurrender.CaseMasterID) DESC LIMIT 100"
+    },
+    {
+      "id": 30,
+      "q": "Show dacoity and robbery cases together",
+      "ok": true,
+      "ms": 3935,
+      "sql": "SELECT CaseMaster.CaseMasterID, CaseMaster.CrimeNo FROM CaseMaster WHERE CaseMaster.CrimeMinorHeadID IN (5, 6) LIMIT 100"
+    }
+  ]
+}

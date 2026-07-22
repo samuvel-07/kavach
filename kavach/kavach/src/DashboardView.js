@@ -89,6 +89,7 @@ export default function DashboardView() {
   const octDecBands = years.map(y => ({ x1: `${y}-10`, x2: `${y}-12` }));
 
   const districtData = Object.entries(byDistrict)
+    .filter(([d]) => d && d !== 'null' && d !== 'undefined')
     .sort(([, a], [, b]) => b - a).slice(0, 8)
     .map(([d, c]) => ({ district: d, cases: c }));
 

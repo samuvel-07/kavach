@@ -147,7 +147,7 @@ function invert(map) {
 function buildSqlPrompt(geo) {
   return `You translate an investigator's question about the Karnataka Police FIR database into ONE ZCQL query (a RESTRICTED SQL dialect).
 
-ABSOLUTE RULE: JOINs are NOT SUPPORTED. Query exactly ONE table per query. No subqueries, no UNION.
+ABSOLUTE RULE: JOINs are NOT SUPPORTED. No UNION. Query exactly ONE table in the main FROM clause. Single-level subqueries in WHERE ... IN (SELECT ...) are allowed for cross-table conditions.
 
 TABLES (query one at a time):
 - CaseMaster(CaseMasterID, CrimeNo, CaseNo, CrimeRegisteredDate[DATE 'YYYY-MM-DD'], PolicePersonID, PoliceStationID, CaseCategoryID, GravityOffenceID, CrimeMajorHeadID, CrimeMinorHeadID, CaseStatusID, CourtID, IncidentFromDate, IncidentToDate, latitude, longitude, BriefFacts, DistrictID, DistrictName, PoliceStationName)
@@ -166,18 +166,23 @@ ID MAPPINGS for WHERE clauses:
 - CaseCategoryID: ${invert(LOOKUPS.CaseCategory)}
 - GravityOffenceID: 1=Heinous, 2=Non-Heinous
 - cstype: A=Chargesheet filed, B=False Case, C=Undetected
+- ComplainantDetails.OccupationID: ${invert(LOOKUPS.Occupation)}
 
 RULES:
 1. ONE single-table SELECT. Allowed: WHERE (=,!=,<,>,<=,>=,LIKE,IN,BETWEEN,AND,OR), GROUP BY, HAVING, ORDER BY, LIMIT, COUNT, SUM, AVG, MIN, MAX, DISTINCT.
 2. Dates are literal strings; NO date functions. Year 2025 = BETWEEN '2025-01-01' AND '2025-12-31'.
 3. Name/text search: LIKE '%value%'.
 4. Repeat offenders: SELECT Accused.AccusedName, COUNT(Accused.CaseMasterID) FROM Accused GROUP BY Accused.AccusedName HAVING COUNT(Accused.CaseMasterID) > 1
-5. If the question needs two tables (e.g. details of cases involving a person), use CaseMasterID values already present in CONVERSATION SO FAR, e.g. WHERE CaseMaster.CaseMasterID IN (101,205).
+5. Cross-table conditions: use a single-level subquery — WHERE Table.CaseMasterID IN (SELECT X.CaseMasterID FROM X WHERE ...). One level only, no nested subqueries. Example: cheating cases with accused older than 40 → SELECT ... FROM CaseMaster WHERE CrimeMinorHeadID = 13 AND CaseMasterID IN (SELECT Accused.CaseMasterID FROM Accused WHERE Accused.AgeYear > 40).
 6. List queries: add LIMIT 100. When listing cases, include CaseMasterID and CrimeNo.
 7. Always use Table.Column notation.
 8. District questions: filter with CaseMaster.DistrictName LIKE '%Mysuru%' or group with GROUP BY CaseMaster.DistrictName. Never join for location.
 9. Station questions: use CaseMaster.PoliceStationName.
 10. Case lookup by CrimeNo: when the user asks about a specific case number (long numeric string), use WHERE CaseMaster.CrimeNo = 'theValue'. CrimeNo is the FIR registration number. Do NOT confuse with CaseNo or CaseMasterID.
+11. GenderID is TEXT 'M'/'F'/'T' in Accused and Victim (e.g. Accused.GenderID = 'F' for women). Only ComplainantDetails.GenderID is numeric (1=Male, 2=Female).
+12. Officer/IO questions: GROUP BY ArrestSurrender.IOID (officer names live in Employee and can't be joined — returning IOID counts is correct; the answer stage may present IDs as 'Officer #N').
+13. City name aliases: Bangalore/ಬೆಂಗಳೂರು → 'Bengaluru City'; Mysore → 'Mysuru'; Hubli → 'Hubballi City'. Always use official DistrictName spellings.
+14. False cases: CaseStatusID = 3 or cstype 'B'. CaseCategoryID is FIR/UDR/PAR type — never use it for false cases.
 
 OUTPUT: ONLY the ZCQL query. No explanation, no markdown.`;
 }
@@ -186,6 +191,13 @@ const ANSWER_SYSTEM_PROMPT = `You are KAVACH, a crime intelligence assistant for
 You are given: the investigator's question, the ZCQL query that was executed, and the resulting rows (JSON).
 Write a concise, factual answer for a police investigator.
 Rules:
+CRITICAL FIELD DISCIPLINE — follow exactly:
+- The crime type is defined ONLY by CrimeMinorHeadID. Translate it using: 1=Murder, 2=Attempt to Murder, 3=Grievous Hurt, 4=Simple Hurt, 5=Robbery, 6=Dacoity, 7=House Burglary, 8=Theft, 9=Vehicle Theft, 10=Chain Snatching, 11=Cruelty by Husband, 12=Molestation, 13=Cheating, 14=Criminal Breach of Trust, 15=Online Financial Fraud, 16=Identity Theft, 17=NDPS Possession, 18=NDPS Trafficking, 19=Rioting, 20=Unlawful Assembly.
+- GravityOffenceID means ONLY severity: 1=Heinous, 2=Non-Heinous. NEVER report it as a crime type or a crime name.
+- CrimeMajorHeadID is a broad group, NOT the specific crime. Do not cite it as the crime.
+- CaseStatusID: 1=Under Investigation, 2=Charge Sheeted, 3=Closed-False Case, 4=Closed-Undetected, 5=Trial. Never say "Active".
+- When BriefFacts text is present in the row, summarize it as the factual account of what happened.
+- State the crime type from CrimeMinorHeadID as authoritative even if other fields seem to suggest otherwise.
 - Base EVERY claim strictly on the provided rows. If rows are empty, say no matching records were found.
 - Cite specific cases by CrimeNo (or CaseMasterID) when present in rows.
 - Use lookup translations where helpful: ${invert(LOOKUPS.CrimeSubHead)}; statuses: ${invert(LOOKUPS.CaseStatus)}; cstype A=Chargesheet,B=False Case,C=Undetected.
@@ -314,6 +326,7 @@ app.post('/api/ask', async (req, res) => {
     return res.status(400).json({ error: 'body must include { question }' });
   }
   const trace = {};
+  trace._start = Date.now();
   try {
     const catalystApp = catalyst.initialize(req);
 
@@ -359,19 +372,122 @@ app.post('/api/ask', async (req, res) => {
     });
 
     // 5) LLM -> natural-language answer grounded in rows
-    const evidenceSample = rows.slice(0, 30);
+    const evidenceSample = rows.slice(0, 15);
     const answer = await callLLM(
       ANSWER_SYSTEM_PROMPT,
       `Language: ${language}\nQuestion: ${question}\nExecuted ZCQL: ${sql}\nRows (${rows.length} total, first ${evidenceSample.length} shown):\n${JSON.stringify(evidenceSample)}`,
-      500
+      350
     );
 
     // 6) Evidence = case identifiers found in the rows
     const evidence = [...new Set(rows.map(r => r.CrimeNo || r.CaseMasterID).filter(Boolean))].slice(0, 50);
 
-    res.json({ answer: answer.trim(), sql, rows: evidenceSample, rowCount: rows.length, evidence, trace });
+    // ---- computed insights (deterministic, no LLM) ----
+    const insights = [];
+    if (rows.length > 0) {
+      // 1. Geographic concentration
+      const distCount = {};
+      rows.forEach(r => { if (r.DistrictName) distCount[r.DistrictName] = (distCount[r.DistrictName] || 0) + 1; });
+      const topDist = Object.entries(distCount).sort((a, b) => b[1] - a[1])[0];
+      if (topDist && rows.length >= 5 && topDist[1] / rows.length >= 0.4) {
+        insights.push({ type: 'cluster', icon: '📍', title: 'Geographic Concentration',
+          text: `${Math.round(100 * topDist[1] / rows.length)}% of these cases (${topDist[1]} of ${rows.length}) are in ${topDist[0]}.` });
+      }
+      // 2. Heinous share
+      const heinous = rows.filter(r => Number(r.GravityOffenceID) === 1).length;
+      if (rows.length >= 5 && heinous / rows.length >= 0.3) {
+        insights.push({ type: 'warning', icon: '⚠️', title: 'High Severity',
+          text: `${Math.round(100 * heinous / rows.length)}% of these cases are classified Heinous.` });
+      }
+      // 3. Time-of-day pattern (from IncidentFromDate hour)
+      const hours = rows.map(r => { const d = r.IncidentFromDate; return d ? new Date(String(d).replace(' ', 'T')).getHours() : null; }).filter(h => h != null);
+      if (hours.length >= 5) {
+        const bands = { 'night (0-6)': 0, 'morning (6-12)': 0, 'afternoon (12-18)': 0, 'evening (18-24)': 0 };
+        hours.forEach(h => { bands[h < 6 ? 'night (0-6)' : h < 12 ? 'morning (6-12)' : h < 18 ? 'afternoon (12-18)' : 'evening (18-24)']++; });
+        const topBand = Object.entries(bands).sort((a, b) => b[1] - a[1])[0];
+        if (topBand[1] / hours.length >= 0.5) {
+          insights.push({ type: 'pattern', icon: '🕐', title: 'Time Pattern',
+            text: `${Math.round(100 * topBand[1] / hours.length)}% of incidents occurred during ${topBand[0]} hours.` });
+        }
+      }
+      // 4. Repeat-offender hint (only if accused names present in rows)
+      const names = {};
+      rows.forEach(r => { if (r.AccusedName) names[r.AccusedName] = (names[r.AccusedName] || 0) + 1; });
+      const repeat = Object.entries(names).filter(([, c]) => c > 1).sort((a, b) => b[1] - a[1])[0];
+      if (repeat) {
+        insights.push({ type: 'repeat_offender', icon: '🔁', title: 'Repeat Name',
+          text: `${repeat[0]} appears in ${repeat[1]} of these records — review for repeat offending.` });
+      }
+    }
+
+    res.json({ answer: answer.trim(), sql, rows: evidenceSample, rowCount: rows.length, evidence, insights, trace });
+
+    // Fire-and-forget audit log write
+    try {
+      let auditUser = 'unknown';
+      try { const u = await catalystApp.userManagement().getCurrentUser(); auditUser = u.email_id || 'unknown'; } catch (_) {}
+      catalystApp.datastore().table('AuditLog').insertRow({
+        UserEmail: auditUser,
+        Query: question.slice(0, 500),
+        SQL: (sql || '').slice(0, 1000),
+        RowCount: rows.length,
+        Status: 'Success',
+        ExecutionTime: `${Date.now() - (trace._start || Date.now())}ms`
+      }).catch(e => console.warn('Audit write skipped:', e.message || e));
+    } catch (_) { /* AuditLog table may not exist yet */ }
   } catch (err) {
     res.status(500).json({ error: String(err && err.message || err), trace });
+  }
+});
+
+const INTELLIGENCE_SYSTEM_PROMPT = `You are a senior Crime Intelligence AI for the Karnataka State Police.
+Given a police investigator's question, the executed ZCQL query, and a sample of the resulting database rows, analyze the data to find insights.
+You must return your analysis strictly as a valid JSON object matching this schema:
+{
+  "insights": [
+    {
+      "id": "string",
+      "title": "string",
+      "description": "string",
+      "type": "pattern" | "warning" | "recommendation" | "hotspot" | "repeat_offender",
+      "severity": "low" | "medium" | "high",
+      "icon": "string (emoji)"
+    }
+  ],
+  "followUps": ["string"]
+}
+Rules:
+- Be concise and factual.
+- Look for repeat offenders (same AccusedName), hotspots (same DistrictName), or temporal/modus operandi patterns.
+- Suggest only questions answerable from this database schema: counts, lists, and groupings over cases, accused, victims, arrests, chargesheets by crime type, district, station, date, status, gender, age. Never suggest questions about custody status, bail, CCTV, vehicles, phones, or any data not in the schema.
+- Return ONLY the JSON object. Do not wrap in markdown or backticks.`;
+
+app.post('/api/intelligence', async (req, res) => {
+  const { question, sql, rows = [] } = req.body || {};
+  if (!question || !sql) {
+    return res.status(400).json({ error: 'body must include { question, sql, rows }' });
+  }
+  
+  try {
+    const userPrompt = `Question: ${question}\nSQL: ${sql}\nRows (${rows.length}):\n${JSON.stringify(rows.slice(0, 50))}`;
+    
+    const rawAnswer = await callLLM(INTELLIGENCE_SYSTEM_PROMPT, userPrompt, 500);
+    
+    let cleaned = rawAnswer.trim();
+    if (cleaned.startsWith('\`\`\`json')) {
+      cleaned = cleaned.substring(7);
+    } else if (cleaned.startsWith('\`\`\`')) {
+      cleaned = cleaned.substring(3);
+    }
+    if (cleaned.endsWith('\`\`\`')) {
+      cleaned = cleaned.substring(0, cleaned.length - 3);
+    }
+    
+    const data = JSON.parse(cleaned.trim());
+    res.json(data);
+  } catch (err) {
+    console.error("Intelligence error:", err);
+    res.json({ insights: [], followUps: [], error: String(err && err.message || err) });
   }
 });
 
@@ -395,12 +511,14 @@ async function pageAll(catalystApp, table, cols) {
 app.get('/api/network', async (req, res) => {
   const minShared = parseInt(req.query.minShared || '1', 10);
   const minCases = parseInt(req.query.minCases || '2', 10);
+  const showIsolated = req.query.showIsolated === 'true';
+  const search = (req.query.search || '').toLowerCase();
   try {
     if (!_network.data || Date.now() > _network.exp) {
       const catalystApp = catalyst.initialize(req);
       const accused = await pageAll(catalystApp, 'Accused', 'AccusedName, AgeYear, CaseMasterID');
       const cases = await pageAll(catalystApp, 'CaseMaster',
-        'CaseMasterID, CrimeNo, GravityOffenceID, CrimeMinorHeadID, DistrictName');
+        'CaseMasterID, CrimeNo, GravityOffenceID, CrimeMinorHeadID, DistrictName, CrimeRegisteredDate');
       const caseInfo = {};
       cases.forEach(c => { caseInfo[c.CaseMasterID] = c; });
 
@@ -428,12 +546,31 @@ app.get('/api/network', async (req, res) => {
       const nodes = Object.entries(people).map(([key, p]) => {
         const cs = [...p.cases];
         const heinous = cs.filter(c => caseInfo[c] && Number(caseInfo[c].GravityOffenceID) === 1).length;
+        
+        // build chronological cases timeline
+        const nodeCases = cs
+          .map(c => {
+            const info = caseInfo[c];
+            if (!info) return null;
+            return {
+              crimeNo: info.CrimeNo,
+              date: info.CrimeRegisteredDate,
+              typeId: info.CrimeMinorHeadID,
+              district: info.DistrictName,
+              heinous: Number(info.GravityOffenceID) === 1
+            };
+          })
+          .filter(Boolean)
+          .sort((a, b) => new Date(a.date) - new Date(b.date))
+          .slice(0, 15);
+
         return {
           id: key, name: p.name, age: p.age, caseCount: cs.length,
           heinousCount: heinous,
           risk: Math.min(100, cs.length * 12 + heinous * 20),   // explainable score
           crimeNos: cs.map(c => caseInfo[c] ? caseInfo[c].CrimeNo : c).slice(0, 20),
-          districts: [...new Set(cs.map(c => caseInfo[c] && caseInfo[c].DistrictName).filter(Boolean))]
+          districts: [...new Set(cs.map(c => caseInfo[c] && caseInfo[c].DistrictName).filter(Boolean))],
+          cases: nodeCases
         };
       });
       const edges = Object.entries(edgeMap).map(([ek, e]) => {
@@ -445,7 +582,11 @@ app.get('/api/network', async (req, res) => {
     const { nodes, edges } = _network.data;
     const keepEdges = edges.filter(e => e.weight >= minShared);
     const connected = new Set(keepEdges.flatMap(e => [e.source, e.target]));
-    const keepNodes = nodes.filter(n => n.caseCount >= minCases || connected.has(n.id));
+    const keepNodes = nodes.filter(n => 
+      connected.has(n.id) || 
+      (showIsolated && n.caseCount >= minCases) || 
+      (search && n.name.toLowerCase().includes(search))
+    );
     const keepIds = new Set(keepNodes.map(n => n.id));
     res.json({
       nodes: keepNodes,
@@ -462,7 +603,15 @@ let _cases = { data: null, exp: 0 };
 async function getCases(catalystApp) {
   if (_cases.data && Date.now() < _cases.exp) return _cases.data;
   const rows = await pageAll(catalystApp, 'CaseMaster',
-    'CaseMasterID, CrimeNo, CrimeRegisteredDate, CrimeMinorHeadID, CrimeMajorHeadID, GravityOffenceID, CaseStatusID, latitude, longitude, DistrictName, PoliceStationName');
+    'CaseMasterID, CrimeNo, CrimeRegisteredDate, CrimeMinorHeadID, CrimeMajorHeadID, GravityOffenceID, CaseStatusID, latitude, longitude, DistrictName, PoliceStationName, PoliceStationID');
+  
+  const geo = await getGeo(catalystApp);
+  rows.forEach(r => {
+    if (!r.DistrictName && r.PoliceStationID) {
+      r.DistrictName = geo.unitToDistrict[r.PoliceStationID] || 'Unknown';
+    }
+  });
+
   _cases = { data: rows, exp: Date.now() + 10 * 60 * 1000 };
   return rows;
 }
@@ -574,6 +723,36 @@ app.post('/api/export-pdf', async (req, res) => {
     }
   } catch (err) {
     res.status(500).json({ error: String(err && err.message || err) });
+  }
+});
+
+// ======================= AUDIT LOGS =======================
+
+app.get('/api/audit', async (req, res) => {
+  try {
+    const catalystApp = catalyst.initialize(req);
+    const raw = await zcql(catalystApp, 'SELECT ROWID, UserEmail, Query, SQL, RowCount, Status, ExecutionTime, CREATEDTIME FROM AuditLog ORDER BY ROWID DESC LIMIT 100');
+    const logs = (raw || []).map(r => {
+      const a = r.AuditLog || r;
+      return {
+        timestamp: a.CREATEDTIME || '',
+        user: a.UserEmail || 'unknown',
+        query: a.Query || '',
+        sql: a.SQL || '',
+        rowCount: a.RowCount,
+        status: a.Status || 'Success',
+        executionTime: a.ExecutionTime || ''
+      };
+    });
+    res.json({ logs });
+  } catch (err) {
+    // If AuditLog table doesn't exist, return empty gracefully
+    const msg = String(err && err.message || err);
+    if (msg.includes('Table') || msg.includes('not exist') || msg.includes('AuditLog')) {
+      res.json({ logs: [], note: 'AuditLog table not yet created in Catalyst Data Store. Create it with columns: UserEmail, Query, SQL, RowCount, Status, ExecutionTime.' });
+    } else {
+      res.status(500).json({ error: msg });
+    }
   }
 });
 

@@ -5,6 +5,7 @@ import ChatView from './ChatView';
 import NetworkView from './NetworkView';
 import MapView from './MapView';
 import DashboardView from './DashboardView';
+import AuditView from './AuditView';
 
 const API_BASE = process.env.NODE_ENV === 'development'
   ? 'https://kavach-60078268134.development.catalystserverless.in'
@@ -139,6 +140,7 @@ export default function App() {
             rows: data.rows,
             rowCount: data.rowCount,
             evidence: data.evidence,
+            insights: data.insights,
             selfCorrected: data.trace?.selfCorrected || false,
           };
         }
@@ -176,7 +178,7 @@ export default function App() {
       const resp = await fetch(`${API_BASE}/server/api/api/export-pdf`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages, title: 'KAVACH Intelligence Report' })
+        body: JSON.stringify({ messages, title: 'KAVACH Report' })
       });
       const ct = resp.headers.get('content-type') || '';
       if (ct.includes('application/pdf')) {
@@ -225,6 +227,10 @@ export default function App() {
 
   const roleBadge = user?.role === 'supervisor' ? 'Supervisor' : 'Investigator';
 
+  // Last successful chat rows
+  const lastAssistantMsg = [...messages].reverse().find(m => m.role === 'assistant' && !m.loading && !m.error);
+  const chatRows = lastAssistantMsg?.rows || null;
+
   return (
     <div className="app-shell">
       <Sidebar active={page} onNav={handleNav} allowedPages={user?.pages} />
@@ -256,10 +262,13 @@ export default function App() {
             onRetry={handleRetry}
           />
         ) : page === 'network' ? (
-          <NetworkView onAskCase={(crimeNo) => {
-            setPage('chat');
-            setTimeout(() => doSend(`Show all details of the case with CrimeNo ${crimeNo}`), 100);
-          }} />
+          <NetworkView 
+            chatRows={chatRows}
+            onAskCase={(crimeNo) => {
+              setPage('chat');
+              setTimeout(() => doSend(`Show all details of the case with CrimeNo ${crimeNo}`), 100);
+            }} 
+          />
         ) : page === 'map' ? (
           <MapView onAskCase={(crimeNo) => {
             setPage('chat');
@@ -267,6 +276,8 @@ export default function App() {
           }} />
         ) : page === 'dashboard' ? (
           <DashboardView />
+        ) : page === 'audit' ? (
+          <AuditView />
         ) : (
           <PlaceholderPage id={page} />
         )}

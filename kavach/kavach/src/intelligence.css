@@ -1,0 +1,172 @@
+/* Intelligence Panel - Premium 5 Crore Look */
+
+.intel-panel {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.6) 0%, rgba(15, 23, 42, 0.2) 100%);
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.intel-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: #94a3b8;
+}
+
+.intel-sparkle {
+  color: #fbbf24;
+  font-size: 14px;
+}
+
+.intel-panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Insight Cards */
+.intel-card {
+  background: rgba(30, 41, 59, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: relative;
+  overflow: hidden;
+}
+
+.intel-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: 4px 0 0 4px;
+}
+
+.intel-severity-high::before { background: #ef4444; }
+.intel-severity-medium::before { background: #f59e0b; }
+.intel-severity-low::before { background: #3b82f6; }
+
+.intel-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.intel-card-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  color: #f1f5f9;
+}
+
+.intel-icon {
+  font-size: 16px;
+}
+
+.intel-card-body {
+  padding-left: 24px;
+}
+
+.intel-desc {
+  margin: 0;
+  font-size: 13px;
+  color: #cbd5e1;
+  line-height: 1.5;
+}
+
+/* Recommendation Card */
+.intel-rec-card {
+  background: rgba(16, 185, 129, 0.05);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+.intel-rec-card::before {
+  background: #10b981;
+}
+.intel-rec-card .intel-card-title-wrap {
+  color: #34d399;
+}
+
+/* Confidence Badge */
+.intel-confidence {
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #38bdf8;
+  letter-spacing: 0.5px;
+}
+
+/* Questions */
+.intel-questions-container {
+  margin-top: 4px;
+}
+
+.intel-questions-header {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.intel-questions-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.intel-question-chip {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #cbd5e1;
+  padding: 6px 12px;
+  border-radius: 16px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.intel-question-chip:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Loading Shimmer */
+.intel-loading {
+  justify-content: center;
+  align-items: center;
+  min-height: 100px;
+  position: relative;
+  overflow: hidden;
+}
+
+.intel-loading-text {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 1px;
+  animation: pulse 1.5s infinite ease-in-out;
+}
+
+@keyframes pulse {
+  0% { opacity: 0.5; }
+  50% { opacity: 1; }
+  100% { opacity: 0.5; }
+}

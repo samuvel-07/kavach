@@ -1,6 +1,8 @@
 import React, { useState, useCallback } from 'react';
 import EvidenceChips from './EvidenceChips';
 import ResultsTable from './ResultsTable';
+import IntelligencePanel from './components/intelligence/IntelligencePanel';
+import InvestigationWorkspace from './components/investigation/InvestigationWorkspace';
 
 function SqlBlock({ sql }) {
   const [open, setOpen] = useState(false);
@@ -85,7 +87,21 @@ function SpeakButton({ text }) {
   );
 }
 
-export default function MessageCard({ msg, onRetry }) {
+function FormattedText({ text }) {
+  if (!text) return null;
+  const parts = text.split('**');
+  return (
+    <>
+      {parts.map((part, i) => (
+        i % 2 === 1 ? <strong key={i}>{part}</strong> : <span key={i}>{part}</span>
+      ))}
+    </>
+  );
+}
+
+export default function MessageCard({ msg, onRetry, onSend, chatLoading }) {
+  const [selectedCaseId, setSelectedCaseId] = useState(null);
+
   /* User message */
   if (msg.role === 'user') {
     return (
@@ -144,7 +160,7 @@ export default function MessageCard({ msg, onRetry }) {
         <div className="card">
           <div className="card-body">
             <div className="answer-row">
-              <div className="answer-text">{msg.answer}</div>
+              <div className="answer-text"><FormattedText text={msg.answer} /></div>
               <div className="answer-actions">
                 {msg.selfCorrected && (
                   <span className="badge-corrected" title="Query was auto-corrected after an initial failure">⟳ self-corrected</span>
@@ -152,8 +168,15 @@ export default function MessageCard({ msg, onRetry }) {
                 <SpeakButton text={msg.answer} />
               </div>
             </div>
-            <EvidenceChips evidence={msg.evidence} />
+            <EvidenceChips evidence={msg.evidence} onSelect={setSelectedCaseId} />
           </div>
+          {selectedCaseId && (
+            <InvestigationWorkspace 
+              caseId={selectedCaseId} 
+              onClose={() => setSelectedCaseId(null)} 
+            />
+          )}
+          <IntelligencePanel msg={msg} onSend={onSend} chatLoading={chatLoading} />
           <SqlBlock sql={msg.sql} />
           <ResultsTable rows={msg.rows} rowCount={msg.rowCount} />
         </div>

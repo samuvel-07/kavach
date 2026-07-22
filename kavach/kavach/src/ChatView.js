@@ -54,6 +54,8 @@ export default function ChatView({ messages, input, setInput, onSend, loading, l
               key={i}
               msg={msg}
               onRetry={msg.error ? () => onRetry(i) : undefined}
+              onSend={onSend}
+              chatLoading={loading}
             />
           ))
         )}

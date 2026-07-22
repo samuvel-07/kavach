@@ -195,9 +195,9 @@ export default function MapView({ onAskCase }) {
               center={[p.lat, p.lng]}
               radius={p.heinous ? 5 : 3}
               pathOptions={{
-                color: p.heinous ? '#F87171' : '#F5A623',
-                fillColor: p.heinous ? '#F87171' : '#F5A623',
-                fillOpacity: 0.7, weight: 0,
+                color: '#FFFFFF',
+                fillColor: p.heinous ? '#C0392B' : '#1F6FEB',
+                fillOpacity: 0.6, weight: 1,
               }}
             >
               <Popup>
