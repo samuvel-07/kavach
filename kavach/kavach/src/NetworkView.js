@@ -49,7 +49,7 @@ const getInitials = (name) => {
   return name.slice(0, 2).toUpperCase();
 };
 
-export default function NetworkView({ onAskCase, chatRows }) {
+export default function NetworkView({ onAskCase, chatRows, chatEvidence }) {
   const cyRef = useRef(null);
   const containerRef = useRef(null);
   const [data, setData] = useState(null);
@@ -65,10 +65,21 @@ export default function NetworkView({ onAskCase, chatRows }) {
   // Filtered network data based on last chat search
   const getFilteredData = useCallback(() => {
     if (!data) return null;
-    if (!chatRows || chatRows.length === 0) return data;
-
-    const chatCrimeNos = new Set(chatRows.map(r => r.CrimeNo).filter(Boolean));
     
+    // Build set of crime numbers from chat
+    const chatCrimeNos = new Set();
+    if (chatRows && chatRows.length > 0) {
+      chatRows.forEach(r => {
+        if (r.CrimeNo) chatCrimeNos.add(r.CrimeNo);
+        if (r.CRIMENO) chatCrimeNos.add(r.CRIMENO); // fallback
+      });
+    }
+    if (chatEvidence && chatEvidence.length > 0) {
+      chatEvidence.forEach(e => chatCrimeNos.add(e));
+    }
+
+    if (chatCrimeNos.size === 0) return data; // Nothing to filter by
+
     // A node is kept if it shares at least one case with the chat results
     const filteredNodes = data.nodes.filter(n => 
       n.cases && n.cases.some(c => chatCrimeNos.has(c.crimeNo))
@@ -96,7 +107,7 @@ export default function NetworkView({ onAskCase, chatRows }) {
       edges: filteredEdges,
       totals: { people: filteredNodes.length, links: filteredEdges.length }
     };
-  }, [data, chatRows]);
+  }, [data, chatRows, chatEvidence]);
 
   const displayData = getFilteredData() || data;
 
@@ -453,7 +464,7 @@ export default function NetworkView({ onAskCase, chatRows }) {
             <div className="corkboard-container">
               {/* Title corner block */}
               <div className="board-title-block">
-                <h2>KAVACH — Investigative Network {chatRows && chatRows.length > 0 ? " (Chat Filtered)" : ""}</h2>
+                <h2>KAVACH — Investigative Network {(chatRows && chatRows.length > 0) || (chatEvidence && chatEvidence.length > 0) ? " (Chat Filtered)" : ""}</h2>
                 <p>{displayData?.nodes?.length} suspects · {displayData?.edges?.length} connections · Min shared: {minShared}</p>
               </div>
 

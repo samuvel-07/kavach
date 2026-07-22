@@ -230,6 +230,7 @@ export default function App() {
   // Last successful chat rows
   const lastAssistantMsg = [...messages].reverse().find(m => m.role === 'assistant' && !m.loading && !m.error);
   const chatRows = lastAssistantMsg?.rows || null;
+  const chatEvidence = lastAssistantMsg?.evidence || [];
 
   return (
     <div className="app-shell">
@@ -264,6 +265,7 @@ export default function App() {
         ) : page === 'network' ? (
           <NetworkView 
             chatRows={chatRows}
+            chatEvidence={chatEvidence}
             onAskCase={(crimeNo) => {
               setPage('chat');
               setTimeout(() => doSend(`Show all details of the case with CrimeNo ${crimeNo}`), 100);
