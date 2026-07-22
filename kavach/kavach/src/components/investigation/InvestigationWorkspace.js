@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useCaseWorkspace } from '../../hooks/useCaseWorkspace';
 import CaseSummaryCard from './CaseSummaryCard';
 import TimelineTab from './TimelineTab';
@@ -14,6 +14,17 @@ const TABS = ['Timeline', 'Evidence', 'Accused', 'Victims', 'Vehicles', 'Phones'
 export default function InvestigationWorkspace({ caseId, onClose }) {
   const { data, loading, error } = useCaseWorkspace(caseId);
   const [activeTab, setActiveTab] = useState('Timeline');
+  const tabsRef = useRef(null);
+
+  const scrollTabs = (direction) => {
+    if (tabsRef.current) {
+      const scrollAmount = 250;
+      tabsRef.current.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth'
+      });
+    }
+  };
 
   if (loading) {
     return (
@@ -44,16 +55,20 @@ export default function InvestigationWorkspace({ caseId, onClose }) {
 
       <div className="workspace-body">
         <div className="workspace-main">
-          <div className="workspace-tabs">
-            {TABS.map(tab => (
-              <button 
-                key={tab} 
-                className={`workspace-tab ${activeTab === tab ? 'active' : ''}`}
-                onClick={() => setActiveTab(tab)}
-              >
-                {tab}
-              </button>
-            ))}
+          <div className="workspace-tabs-container">
+            <button className="workspace-tab-nav" onClick={() => scrollTabs('left')} aria-label="Scroll left">&lt;</button>
+            <div className="workspace-tabs" ref={tabsRef}>
+              {TABS.map(tab => (
+                <button 
+                  key={tab} 
+                  className={`workspace-tab ${activeTab === tab ? 'active' : ''}`}
+                  onClick={() => setActiveTab(tab)}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+            <button className="workspace-tab-nav" onClick={() => scrollTabs('right')} aria-label="Scroll right">&gt;</button>
           </div>
 
           <div className="workspace-tab-content">

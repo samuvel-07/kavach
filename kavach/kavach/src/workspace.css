@@ -128,22 +128,48 @@
 }
 
 /* Tabs */
+.workspace-tabs-container {
+  display: flex;
+  align-items: center;
+  background: #1e293b;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  position: relative;
+}
+
+.workspace-tab-nav {
+  background: #0f172a;
+  color: #94a3b8;
+  border: none;
+  width: 32px;
+  height: 100%;
+  min-height: 44px;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+  z-index: 2;
+  box-shadow: 0 0 10px rgba(0,0,0,0.5);
+}
+
+.workspace-tab-nav:hover {
+  background: #1e293b;
+  color: #fff;
+}
+
 .workspace-tabs {
   display: flex;
   overflow-x: auto;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  background: #1e293b;
-  padding: 0 10px;
+  flex: 1;
+  padding: 0;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 .workspace-tabs::-webkit-scrollbar {
-  height: 6px;
-}
-.workspace-tabs::-webkit-scrollbar-track {
-  background: rgba(0,0,0,0.1);
-}
-.workspace-tabs::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.2);
-  border-radius: 3px;
+  display: none;
 }
 
 .workspace-tab {
